@@ -1,0 +1,8 @@
+/target
+/node_modules
+/dist
+/.vite
+/.rt-pn-artifacts
+/src-tauri/target
+/src-tauri/gen
+*.log

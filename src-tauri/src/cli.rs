@@ -1,0 +1,266 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::Instant;
+
+use crate::dot;
+use crate::model::AnalysisResult;
+
+fn subcommand_for(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "rtsl" => "rtsl",
+        "ptpn" => "ptpn",
+        _ => "tdg",
+    }
+}
+
+fn artifact_directory() -> PathBuf {
+    if let Ok(path) = std::env::var("PTPN_ARTIFACT_DIR") {
+        let path = PathBuf::from(path);
+        if std::fs::create_dir_all(&path).is_ok() {
+            return path;
+        }
+    }
+    #[cfg(windows)]
+    if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+        let path = PathBuf::from(base).join("RT-PN").join("artifacts");
+        if std::fs::create_dir_all(&path).is_ok() {
+            return path;
+        }
+    }
+    #[cfg(not(windows))]
+    if let Some(base) = std::env::var_os("XDG_CACHE_HOME") {
+        let path = PathBuf::from(base).join("rt-pn").join("artifacts");
+        if std::fs::create_dir_all(&path).is_ok() {
+            return path;
+        }
+    }
+    let fallback = std::env::temp_dir().join("rt-pn-artifacts");
+    let _ = std::fs::create_dir_all(&fallback);
+    fallback
+}
+
+pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
+    let started = Instant::now();
+    let mut result = AnalysisResult {
+        path: path.display().to_string(),
+        ..Default::default()
+    };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let run_dir = artifact_directory().join(format!("run-{}-{stamp}", std::process::id()));
+    if let Err(error) = std::fs::create_dir_all(&run_dir) {
+        result.error = format!("cannot create artifact directory: {error}");
+        return result;
+    }
+    let base = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model")
+        .replace(
+            |c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-',
+            "_",
+        );
+    let ptpn_path = run_dir.join(format!("{base}.ptpn.dot"));
+    let scg_path = run_dir.join(format!("{base}.scg.dot"));
+    let metrics_path = run_dir.join(format!("{base}.metrics.json"));
+    let wcet_path = run_dir.join(format!("{base}.wcet.json"));
+    let tdg_path = run_dir.join(format!("{base}.tdg.json"));
+
+    let subcommand = subcommand_for(path);
+    let mut command = Command::new(cli);
+    command
+        .arg(subcommand)
+        .arg("-f")
+        .arg(path)
+        .arg("--export-ptpn")
+        .arg(&ptpn_path)
+        .arg("--export-scg")
+        .arg(&scg_path)
+        .arg("--export-metrics")
+        .arg(&metrics_path)
+        .arg("--export-wcet")
+        .arg(&wcet_path)
+        .arg("--max-states")
+        .arg("20000");
+    if subcommand == "rtsl" {
+        command.arg("--export-tdg").arg(&tdg_path);
+    }
+    if let Some(parent) = path.parent() {
+        command.current_dir(parent);
+    }
+    command.env("PATH", augmented_path(cli));
+
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(error) => {
+            result.error = format!("failed to start ptpn: {error}");
+            return result;
+        }
+    };
+    result.elapsed_ms = started.elapsed().as_millis();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    result.logs = stdout
+        .lines()
+        .chain(stderr.lines())
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect();
+
+    let ptpn_text = std::fs::read_to_string(&ptpn_path).unwrap_or_default();
+    let scg_text = std::fs::read_to_string(&scg_path).unwrap_or_default();
+    result.net = dot::parse_petri(&ptpn_text);
+    result.scg = dot::parse_state_graph(&scg_text);
+    if let Ok(text) = std::fs::read_to_string(&metrics_path) {
+        if let Ok(value) = serde_json::from_str(&text) {
+            result.metrics = value;
+        }
+    }
+
+    let tdg_text = if subcommand == "rtsl" {
+        std::fs::read_to_string(&tdg_path).unwrap_or_default()
+    } else if subcommand == "tdg" {
+        std::fs::read_to_string(path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    if !tdg_text.is_empty() {
+        if let Ok(value) = serde_json::from_str(&tdg_text) {
+            result.tdg = value;
+        }
+    }
+
+    result.workflow_label = match subcommand {
+        "rtsl" => "SPEC-FIRST · RTSL".to_string(),
+        "ptpn" => "MANUAL NET · PTPN".to_string(),
+        _ => "SPEC-FIRST · TDG".to_string(),
+    };
+
+    if !output.status.success() {
+        result.ok = false;
+        let interesting: Vec<&String> = result
+            .logs
+            .iter()
+            .filter(|line| {
+                let lower = line.to_ascii_lowercase();
+                lower.contains("error") || lower.contains("failed") || lower.contains("unsupported")
+            })
+            .collect();
+        let tail: Vec<String> = if interesting.is_empty() {
+            result
+                .logs
+                .iter()
+                .rev()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect()
+        } else {
+            interesting
+                .into_iter()
+                .rev()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect()
+        };
+        result.error = if tail.is_empty() {
+            format!("ptpn exited with code {:?}", output.status.code())
+        } else {
+            tail.join("\n")
+        };
+        return result;
+    }
+
+    if !result.net.valid {
+        result.error = "the analyzer produced no PTPN structure".to_string();
+        result.ok = false;
+        return result;
+    }
+
+    result.ok = true;
+    result
+}
+
+fn augmented_path(cli: &Path) -> std::ffi::OsString {
+    let mut entries: Vec<PathBuf> = Vec::new();
+    if let Some(parent) = cli.parent() {
+        entries.push(parent.to_path_buf());
+    }
+    if let Ok(path) = std::env::var("PTPN_MINGW_BIN") {
+        entries.push(PathBuf::from(path));
+    }
+    for candidate in [
+        r"D:\mingw64\bin",
+        r"C:\msys64\mingw64\bin",
+        r"C:\mingw64\bin",
+    ] {
+        let path = PathBuf::from(candidate);
+        if path.is_dir() {
+            entries.push(path);
+        }
+    }
+    if let Some(existing) = std::env::var_os("PATH") {
+        entries.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(entries).unwrap_or_default()
+}
+
+pub fn resolve_cli() -> Option<PathBuf> {
+    if let Ok(path) = std::env::var("PTPN_BIN") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let mut bases = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        for ancestor in cwd.ancestors().take(7) {
+            bases.push(ancestor.to_path_buf());
+        }
+        // Development layout: PrioritizedTPN/rt-pn (submodule) and the C++
+        // analyzer build live as siblings.
+        bases.push(cwd.join("..").join("PrioritizedTPN"));
+        bases.push(cwd.join("..").join("..").join("PrioritizedTPN"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            for ancestor in parent.ancestors().take(7) {
+                bases.push(ancestor.to_path_buf());
+            }
+        }
+    }
+
+    let relative = [
+        "cmake-build-debug-mingw/ptpn.exe",
+        "cmake-build-debug-mingw/ptpn",
+        "cmake-build-desktop-mingw/ptpn.exe",
+        "cmake-build-desktop-mingw/ptpn",
+        "build/ptpn.exe",
+        "build/ptpn",
+        "ptpn.exe",
+        "ptpn",
+    ];
+    for base in bases {
+        for rel in relative {
+            let candidate = base.join(rel);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
