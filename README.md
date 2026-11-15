@@ -66,7 +66,9 @@ The desktop app never reimplements analysis. It launches the CLI with
 `tdg|rtsl|ptpn -f … --export-ptpn --export-scg --export-metrics --export-wcet`
 and parses the exports.
 
-Exports default to `%LOCALAPPDATA%\RT-PN\artifacts` on Windows. Override with:
+Exports default to `%LOCALAPPDATA%\RT-PN\artifacts` on Windows. If that
+directory is not writable (for example under a restricted runner), RT-PN probes
+and falls back to `.rt-pn-artifacts` in the current workspace. Override with:
 
 ```text
 PTPN_ARTIFACT_DIR
@@ -120,4 +122,5 @@ src-tauri/src/       Rust backend
 - Specification-first: functional.
 - Binary-first: parser artifacts, CFG / thread / net previews; analysis pending.
 - Qt desktop: replaced by RT-PN; the C++ CLI remains unchanged.
+
 

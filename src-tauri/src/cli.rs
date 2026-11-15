@@ -19,30 +19,67 @@ fn subcommand_for(path: &Path) -> &'static str {
     }
 }
 
-fn artifact_directory() -> PathBuf {
+fn writable_directory(path: PathBuf) -> Option<PathBuf> {
+    std::fs::create_dir_all(&path).ok()?;
+    let probe = path.join(format!(
+        ".write-probe-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    if std::fs::write(&probe, b"ok").is_err() {
+        return None;
+    }
+    let _ = std::fs::remove_file(&probe);
+    Some(path)
+}
+
+fn artifact_directory() -> Result<PathBuf, String> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(path) = std::env::var("PTPN_ARTIFACT_DIR") {
-        let path = PathBuf::from(path);
-        if std::fs::create_dir_all(&path).is_ok() {
-            return path;
+        candidates.push(PathBuf::from(path));
+    }
+    let cwd = std::env::current_dir().ok();
+    if cfg!(debug_assertions) {
+        if let Some(cwd) = &cwd {
+            candidates.push(cwd.join(".rt-pn-artifacts"));
         }
     }
     #[cfg(windows)]
     if let Some(base) = std::env::var_os("LOCALAPPDATA") {
-        let path = PathBuf::from(base).join("RT-PN").join("artifacts");
-        if std::fs::create_dir_all(&path).is_ok() {
-            return path;
-        }
+        candidates.push(PathBuf::from(base).join("RT-PN").join("artifacts"));
     }
     #[cfg(not(windows))]
     if let Some(base) = std::env::var_os("XDG_CACHE_HOME") {
-        let path = PathBuf::from(base).join("rt-pn").join("artifacts");
-        if std::fs::create_dir_all(&path).is_ok() {
-            return path;
-        }
+        candidates.push(PathBuf::from(base).join("rt-pn").join("artifacts"));
     }
-    let fallback = std::env::temp_dir().join("rt-pn-artifacts");
-    let _ = std::fs::create_dir_all(&fallback);
-    fallback
+    // A restricted development/runner environment may not have write access
+    // to the user profile. The current directory is usually the workspace.
+    if let Some(cwd) = &cwd {
+        candidates.push(cwd.join(".rt-pn-artifacts"));
+    }
+    candidates.push(std::env::temp_dir().join("rt-pn-artifacts"));
+
+    let mut tried = Vec::new();
+    for candidate in candidates {
+        if tried.iter().any(|item: &PathBuf| item == &candidate) {
+            continue;
+        }
+        if let Some(directory) = writable_directory(candidate.clone()) {
+            return Ok(directory);
+        }
+        tried.push(candidate);
+    }
+    Err(format!(
+        "no writable artifact directory (tried {}). Set PTPN_ARTIFACT_DIR to a writable directory.",
+        tried
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
@@ -55,9 +92,19 @@ pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
-    let run_dir = artifact_directory().join(format!("run-{}-{stamp}", std::process::id()));
+    let artifact_dir = match artifact_directory() {
+        Ok(directory) => directory,
+        Err(error) => {
+            result.error = error;
+            return result;
+        }
+    };
+    let run_dir = artifact_dir.join(format!("run-{}-{stamp}", std::process::id()));
     if let Err(error) = std::fs::create_dir_all(&run_dir) {
-        result.error = format!("cannot create artifact directory: {error}");
+        result.error = format!(
+            "cannot create artifact directory {}: {error}",
+            run_dir.display()
+        );
         return result;
     }
     let base = path
