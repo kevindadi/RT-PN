@@ -8,7 +8,7 @@ mod workbench;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::binary::BinaryArtifacts;
 use crate::graph::Graph;
@@ -93,14 +93,41 @@ fn load_binary(path: String) -> Result<BinaryPayload, String> {
     })
 }
 
+fn webview_data_directory(app: &tauri::AppHandle) -> PathBuf {
+    if let Ok(directory) = std::env::var("RT_PN_WEBVIEW_DATA_DIR") {
+        return PathBuf::from(directory);
+    }
+    if cfg!(debug_assertions) {
+        // Development runs from the repository. Keeping WebView2 state inside
+        // the workspace avoids user-profile ACL/locking problems (and leaves the
+        // installed app's data untouched).
+        if let Ok(cwd) = std::env::current_dir() {
+            return cwd.join(".webview2");
+        }
+    }
+    app.path()
+        .app_local_data_dir()
+        .map(|directory| directory.join("webview"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("rt-pn-webview"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_title("RT-PN  ·  Real-Time Petri Workbench");
-            }
+            let data_directory = webview_data_directory(app.handle());
+            let _ = std::fs::create_dir_all(&data_directory);
+            let window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("RT-PN  ·  Real-Time Petri Workbench")
+                    .inner_size(1540.0, 960.0)
+                    .min_inner_size(1120.0, 720.0)
+                    .resizable(true)
+                    .theme(Some(tauri::Theme::Dark))
+                    .data_directory(data_directory)
+                    .build()?;
+            let _ = window.set_title("RT-PN  ·  Real-Time Petri Workbench");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

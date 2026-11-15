@@ -120,3 +120,4 @@ src-tauri/src/       Rust backend
 - Specification-first: functional.
 - Binary-first: parser artifacts, CFG / thread / net previews; analysis pending.
 - Qt desktop: replaced by RT-PN; the C++ CLI remains unchanged.
+

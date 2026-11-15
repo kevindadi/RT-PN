@@ -6,3 +6,7 @@
 /src-tauri/target
 /src-tauri/gen
 *.log
+
+/src-tauri/.webview2
+
+/.webview2*
