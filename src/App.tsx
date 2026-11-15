@@ -541,11 +541,18 @@ export default function App() {
                 setAnalysis(null);
                 setBinary(null);
                 setCurrentPath(null);
+                setHistory([]);
+                setActiveStage("dag");
+                setBusy(false);
+                setError(null);
                 setStatus({ text: "NO PROJECT", tone: "muted" });
                 setDetail({
                   title: "NO MODEL",
                   body: "Choose a workflow to begin.",
                 });
+                getCurrentWindow()
+                  .setTitle("RT-PN  ·  Real-Time Petri Workbench")
+                  .catch(() => undefined);
               }}
             >
               <Plus size={13} /> NEW WORKSPACE
