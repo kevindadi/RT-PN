@@ -74,6 +74,12 @@ pub struct AnalysisResult {
     pub tdg: Value,
     pub workflow_label: String,
     pub binary_artifact: String,
+    pub exit_code: Option<i32>,
+    /// Exit code 5: the resource budget stopped the exploration; results are a
+    /// certified upper-bound prefix, not a complete state space.
+    pub partial: bool,
+    pub canceled: bool,
+    pub timed_out: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]

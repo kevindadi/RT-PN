@@ -24,21 +24,24 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { save } from "@tauri-apps/plugin-dialog";
 
 import {
   analyzeElf,
   analyzeModel,
+  cancelAnalysis,
+  engineHealth,
   pickElf,
   pickSpecification,
-  resolveCliPath,
-  resolveElf2tdgPath,
+  writeTextFile,
 } from "./api";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
 import type {
   AnalysisPayload,
   ElfWorkflow,
-  EngineInfo,
+  EngineHealth,
   Graph,
   RunRecord,
   Stage,
@@ -124,8 +127,218 @@ interface Metrics {
   truncated?: boolean;
   hyperperiod?: number;
   states?: number;
+  deadlocks?: number;
   tasks?: Array<{ wcrt?: number; name?: string }>;
   cores?: unknown[];
+}
+
+interface Budget {
+  maxStates: number;
+  timeoutSecs: number;
+  maxMemoryMb: number;
+}
+
+interface RunSnapshot {
+  id: number;
+  time: string;
+  file: string;
+  ok: boolean;
+  partial: boolean;
+  canceled: boolean;
+  schedulable?: boolean;
+  exact?: boolean;
+  truncated?: boolean;
+  states: number;
+  budgets: Budget;
+  elapsedMs: number;
+  wcrt: Record<string, number>;
+}
+
+function snapshotFrom(payload: AnalysisPayload, budgets: Budget, id: number): RunSnapshot {
+  const metrics = (payload.result.metrics ?? {}) as Metrics;
+  const wcrt: Record<string, number> = {};
+  for (const task of metrics.tasks ?? []) {
+    if (task?.name && typeof task.wcrt === "number") {
+      wcrt[task.name] = task.wcrt;
+    }
+  }
+  return {
+    id,
+    time: timestamp(),
+    file: fileName(payload.result.path),
+    ok: payload.result.ok,
+    partial: payload.result.partial,
+    canceled: payload.result.canceled,
+    schedulable: metrics.schedulable,
+    exact: metrics.exact,
+    truncated: metrics.truncated,
+    states: payload.result.scg.nodes.length,
+    budgets,
+    elapsedMs: payload.result.elapsed_ms,
+    wcrt,
+  };
+}
+
+function reportNumber(value: number | undefined): string {
+  return value === undefined ? "—" : String(value);
+}
+
+function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string {
+  const result = payload.result;
+  const metrics = result.metrics ?? {};
+  const lines = [
+    `# RT-PN analysis report`,
+    "",
+    `- Model: \`${result.path}\``,
+    `- Workflow: ${result.workflow_label || "SPEC-FIRST"}`,
+    `- Generated: ${new Date().toISOString()}`,
+    `- Status: ${result.ok ? (result.partial ? "PARTIAL (resource budget reached)" : "OK") : "FAILED"}`,
+    `- Exit code: ${result.exit_code ?? "—"}`,
+    `- Elapsed: ${result.elapsed_ms} ms`,
+    `- Budget: max-states ${budgets.maxStates}, timeout ${budgets.timeoutSecs || "off"} s, max-memory ${budgets.maxMemoryMb || "off"} MB`,
+    "",
+    "## Assumptions",
+    "",
+    payload.docs.assumptions || "(none)",
+    "",
+    "## State space",
+    "",
+    `- state classes: ${result.scg.nodes.length}`,
+    `- transitions: ${result.scg.edges.length}`,
+    `- places/transitions/arcs: ${result.net.places.length}/${result.net.transitions.length}/${result.net.arcs.length}`,
+    "",
+    "## Metrics JSON",
+    "",
+    "```json",
+    JSON.stringify(metrics, null, 2),
+    "```",
+    "",
+    "## DAG",
+    "",
+    "```text",
+    payload.docs.dag,
+    "```",
+    "",
+    "## Report",
+    "",
+    "```text",
+    payload.docs.report,
+    "```",
+    "",
+  ];
+  if (result.error) {
+    lines.push("## Error", "", "```text", result.error, "```", "");
+  }
+  const logTail = result.logs.slice(-80);
+  if (logTail.length > 0) {
+    lines.push("## Analyzer log tail", "", "```text", logTail.join("\n"), "```", "");
+  }
+  return lines.join("\n");
+}
+
+function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose: () => void }) {
+  const rows: Array<{ label: string; before: string; after: string; regressed: boolean }> = [
+    {
+      label: "status",
+      before: a.ok ? (a.partial ? "PARTIAL" : "OK") : "FAILED",
+      after: b.ok ? (b.partial ? "PARTIAL" : "OK") : "FAILED",
+      regressed: a.ok && !b.ok,
+    },
+    {
+      label: "schedulable",
+      before: reportNumber(a.schedulable === undefined ? undefined : Number(a.schedulable)),
+      after: reportNumber(b.schedulable === undefined ? undefined : Number(b.schedulable)),
+      regressed: a.schedulable === true && b.schedulable === false,
+    },
+    {
+      label: "state classes",
+      before: String(a.states),
+      after: String(b.states),
+      regressed: b.states > a.states,
+    },
+    {
+      label: "exact",
+      before: String(a.exact ?? "—"),
+      after: String(b.exact ?? "—"),
+      regressed: a.exact === true && b.exact === false,
+    },
+    {
+      label: "truncated",
+      before: String(a.truncated ?? "—"),
+      after: String(b.truncated ?? "—"),
+      regressed: a.truncated === false && b.truncated === true,
+    },
+    {
+      label: "elapsed ms",
+      before: String(a.elapsedMs),
+      after: String(b.elapsedMs),
+      regressed: false,
+    },
+    {
+      label: "budget",
+      before: `${a.budgets.maxStates}/${a.budgets.timeoutSecs}s`,
+      after: `${b.budgets.maxStates}/${b.budgets.timeoutSecs}s`,
+      regressed: false,
+    },
+  ];
+  const tasks = [...new Set([...Object.keys(a.wcrt), ...Object.keys(b.wcrt)])].sort();
+  return (
+    <div className="preview-backdrop" onMouseDown={onClose}>
+      <div className="preview-window" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="preview-header">
+          <div>
+            <div className="preview-eyebrow">RUN COMPARISON</div>
+            <div className="preview-title">
+              {a.file} · #{a.id} → #{b.id}
+            </div>
+          </div>
+          <div className="preview-footer-label">red = regression</div>
+          <button className="btn ghost" onClick={onClose}>
+            CLOSE
+          </button>
+        </div>
+        <div className="preview-canvas" style={{ display: "block", overflow: "auto", padding: 18 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ color: "#7c8ca8", textAlign: "left" }}>
+                <th style={{ padding: 6 }}>metric</th>
+                <th style={{ padding: 6 }}>run #{a.id}</th>
+                <th style={{ padding: 6 }}>run #{b.id}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.label} style={{ borderTop: "1px solid #1d3350" }}>
+                  <td style={{ padding: 6, color: "#b9d3ec" }}>{row.label}</td>
+                  <td style={{ padding: 6 }}>{row.before}</td>
+                  <td style={{ padding: 6, color: row.regressed ? "#ff8a8a" : "#e6f1ff" }}>
+                    {row.after}
+                    {row.regressed ? "  ▲" : ""}
+                  </td>
+                </tr>
+              ))}
+              {tasks.map((task) => {
+                const before = a.wcrt[task];
+                const after = b.wcrt[task];
+                const regressed =
+                  before !== undefined && after !== undefined && after > before;
+                return (
+                  <tr key={`task-${task}`} style={{ borderTop: "1px solid #11243b" }}>
+                    <td style={{ padding: 6, color: "#8ca9c8" }}>wcrt · {task}</td>
+                    <td style={{ padding: 6 }}>{reportNumber(before)}</td>
+                    <td style={{ padding: 6, color: regressed ? "#ff8a8a" : "#e6f1ff" }}>
+                      {reportNumber(after)}
+                      {regressed ? "  ▲" : ""}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function stagesFor(workflow: Workflow): Stage[] {
@@ -187,7 +400,7 @@ function fileName(path: string | null | undefined): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-function engineTag(engine: EngineInfo): string {
+function engineTag(engine: { source: string; external_override: boolean }): string {
   return engine.external_override ? `${engine.source.toUpperCase()}·EXTERNAL` : engine.source.toUpperCase();
 }
 
@@ -223,8 +436,19 @@ export default function App() {
   });
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
-  const [cli, setCli] = useState<EngineInfo | null>(null);
-  const [elf2tdg, setElf2tdg] = useState<EngineInfo | null>(null);
+  const [cli, setCli] = useState<EngineHealth | null>(null);
+  const [elf2tdg, setElf2tdg] = useState<EngineHealth | null>(null);
+  const [budget, setBudget] = useState<Budget>({
+    maxStates: 20000,
+    timeoutSecs: 120,
+    maxMemoryMb: 2048,
+  });
+  const [liveLog, setLiveLog] = useState<string[]>([]);
+  const [liveElapsed, setLiveElapsed] = useState(0);
+  const [snapshots, setSnapshots] = useState<RunSnapshot[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const runStartedRef = useRef(0);
+  const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
   const openPathRef = useRef<(path: string) => void>(() => undefined);
 
@@ -246,13 +470,36 @@ export default function App() {
     : analysis?.docs?.assumptions ?? "";
 
   useEffect(() => {
-    resolveCliPath()
-      .then((path) => setCli(path))
-      .catch(() => setCli(null));
-    resolveElf2tdgPath()
-      .then((path) => setElf2tdg(path))
-      .catch(() => setElf2tdg(null));
+    engineHealth()
+      .then((list) => {
+        setCli(list.find((engine) => engine.name === "ptpn") ?? null);
+        setElf2tdg(list.find((engine) => engine.name === "elf2tdg") ?? null);
+      })
+      .catch(() => {
+        setCli(null);
+        setElf2tdg(null);
+      });
   }, []);
+
+  useEffect(() => {
+    const pending = listen<{ line: string; elapsed_ms: number }>("analysis-log", (event) => {
+      setLiveLog((previous) => [...previous.slice(-199), event.payload.line]);
+      setLiveElapsed(event.payload.elapsed_ms);
+    });
+    return () => {
+      void pending.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!busy) return;
+    const timer = window.setInterval(() => {
+      if (runStartedRef.current > 0) {
+        setLiveElapsed(Date.now() - runStartedRef.current);
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [busy]);
 
   useEffect(() => {
     invoke<string[]>("startup_paths")
@@ -320,28 +567,61 @@ export default function App() {
       });
       setWindowTitle(fileName(path));
       if (newProject) setHistory([]);
+      setLiveLog([]);
+      setLiveElapsed(0);
+      runStartedRef.current = Date.now();
       try {
-        const payload = await analyzeModel(path);
+        const payload = await analyzeModel(path, {
+          max_states: budget.maxStates,
+          timeout_secs: budget.timeoutSecs,
+          max_memory_mb: budget.maxMemoryMb,
+        });
         setAnalysis(payload);
         setBusy(false);
-        const verdict = !payload.result.ok
+        runStartedRef.current = 0;
+        const result = payload.result;
+        setSnapshots((previous) =>
+          [...previous, snapshotFrom(payload, budget, snapshotIdRef.current++)].slice(-10),
+        );
+        if (result.canceled) {
+          setStatus({ text: "CANCELED", tone: "warn" });
+          setDetail({
+            title: "RUN CANCELED",
+            body: `canceled after ${result.elapsed_ms} ms`,
+          });
+          appendHistory("CANCELED", `${payload.docs.task_count}T · canceled`);
+          return;
+        }
+        const verdict = !result.ok
           ? "ERROR"
-          : metricsSchedulable(payload)
-            ? "SCHEDULABLE"
-            : "UNSCHEDULABLE";
+          : result.partial
+            ? "PARTIAL"
+            : metricsSchedulable(payload)
+              ? "SCHEDULABLE"
+              : "UNSCHEDULABLE";
         setStatus({
           text: verdict,
-          tone: !payload.result.ok ? "bad" : metricsSchedulable(payload) ? "good" : "bad",
+          tone: !result.ok
+            ? "bad"
+            : result.partial
+              ? "warn"
+              : metricsSchedulable(payload)
+                ? "good"
+                : "bad",
         });
+        const budgetLine = `budget   max-states ${budget.maxStates} · timeout ${budget.timeoutSecs || "off"} s · max-memory ${budget.maxMemoryMb || "off"} MB`;
+        const partialLine = result.partial
+          ? `\npartial  resource budget reached (exit 5): the state-class graph is an incomplete prefix and metrics stay bounds`
+          : "";
         setDetail({
-          title: payload.result.ok ? "MODEL READY" : "ANALYSIS FAILED",
-          body: payload.result.ok
-            ? `${payload.result.net.places.length} places · ${payload.result.net.transitions.length} transitions\n${payload.result.scg.nodes.length} state classes · ${payload.result.scg.edges.length} edges\n\nText is the primary workbench; PREVIEW opens a graph.`
-            : payload.result.error,
+          title: result.ok ? "MODEL READY" : "ANALYSIS FAILED",
+          body: result.ok
+            ? `${result.net.places.length} places · ${result.net.transitions.length} transitions\n${result.scg.nodes.length} state classes · ${result.scg.edges.length} edges\n${budgetLine}${partialLine}\n\nText is the primary workbench; PREVIEW opens a graph.`
+            : `${result.error}\n\n${budgetLine}`,
         });
         appendHistory(
           verdict,
-          `${payload.docs.task_count}T · ${payload.result.scg.nodes.length}S`,
+          `${payload.docs.task_count}T · ${result.scg.nodes.length}S${result.partial ? " · partial" : ""}`,
         );
       } catch (reason) {
         setBusy(false);
@@ -350,7 +630,30 @@ export default function App() {
         setDetail({ title: "ANALYSIS FAILED", body: String(reason) });
       }
     },
-    [appendHistory],
+    [appendHistory, budget],
+  );
+
+  const exportReport = useCallback(
+    async (format: "md" | "json") => {
+      if (!analysis) return;
+      const contents =
+        format === "md"
+          ? buildMarkdownReport(analysis, budget)
+          : JSON.stringify({ budgets: budget, result: analysis.result, docs: analysis.docs }, null, 2);
+      const stem = fileName(analysis.result.path).replace(/\.[^.]+$/, "");
+      try {
+        const target = await save({
+          defaultPath: `${stem}-report.${format}`,
+          filters: [{ name: format.toUpperCase(), extensions: [format] }],
+        });
+        if (!target) return;
+        await writeTextFile(target, contents);
+        setDetail({ title: "REPORT EXPORTED", body: target });
+      } catch (reason) {
+        setError(String(reason));
+      }
+    },
+    [analysis, budget],
   );
 
   const runBinary = useCallback(
@@ -401,6 +704,11 @@ export default function App() {
     },
     [appendHistory],
   );
+
+  const cancelRun = useCallback(async () => {
+    setStatus({ text: "CANCELING", tone: "warn" });
+    await cancelAnalysis();
+  }, []);
 
   const openSpecDialog = useCallback(async () => {
     const path = await pickSpecification();
@@ -653,6 +961,13 @@ export default function App() {
               ))}
             </div>
           )}
+          <button
+            className="btn wide"
+            disabled={snapshots.length < 2}
+            onClick={() => setCompareOpen(true)}
+          >
+            <RefreshCw size={13} /> COMPARE RUNS
+          </button>
 
           <div className="divider" />
           <Section title="VERDICT" />
@@ -694,13 +1009,17 @@ export default function App() {
           <div className="sidebar-bottom">
             <div className="engine-label" title={cli?.path ?? undefined}>
               <Cpu size={11} />
-              <span>{cli ? `PTPN [${engineTag(cli)}] ${cli.path}` : "PTPN NOT FOUND · just engines"}</span>
+              <span>
+                {cli
+                  ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""} ${cli.path}`
+                  : "PTPN NOT FOUND · just engines"}
+              </span>
             </div>
             <div className="engine-label" title={elf2tdg?.path ?? undefined}>
               <Binary size={11} />
               <span>
                 {elf2tdg
-                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.path}`
+                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""} ${elf2tdg.path}`
                   : "ELF2TDG NOT FOUND · just engines"}
               </span>
             </div>
@@ -780,8 +1099,84 @@ export default function App() {
           <div className="detail-title">{detail.title}</div>
           <div className="detail-body">{detail.body}</div>
           <div className="divider" />
+          <Section title="RESOURCE BUDGET" />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 6,
+              fontSize: 11,
+              alignItems: "center",
+            }}
+          >
+            {(
+              [
+                ["MAX STATES", "maxStates", 100, 1000000, 1000],
+                ["TIMEOUT (S)", "timeoutSecs", 0, 3600, 30],
+                ["MAX MEMORY (MB)", "maxMemoryMb", 0, 65536, 256],
+              ] as const
+            ).map(([label, key, min, max, step]) => (
+              <label key={key} style={{ display: "contents" }}>
+                <span className="faint">{label}</span>
+                <input
+                  type="number"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={budget[key]}
+                  disabled={busy}
+                  style={{
+                    width: 92,
+                    background: "#0b1422",
+                    color: "#dce8f5",
+                    border: "1px solid #1d3350",
+                    borderRadius: 3,
+                    padding: "2px 6px",
+                    fontFamily: "inherit",
+                  }}
+                  onChange={(event) =>
+                    setBudget((previous) => ({
+                      ...previous,
+                      [key]: Number(event.target.value) || 0,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <div className="faint" style={{ marginTop: 6 }}>
+            Petri-net state spaces can explode. The engine stops with partial
+            results (exit 5) when a limit is hit; 0 disables timeout/memory.
+          </div>
+          {busy && workflow === "spec" && (
+            <button className="btn wide bad" onClick={() => void cancelRun()}>
+              CANCEL RUN · {Math.round(liveElapsed / 1000)}s
+            </button>
+          )}
+
+          <div className="divider" />
           <Section title="RUN LOG" />
-          <pre className="run-log">{analysis?.result.logs.join("\n") || binary?.warnings.join("\n") || "(no output)"}</pre>
+          <pre className="run-log">
+            {busy && liveLog.length > 0
+              ? liveLog.slice(-80).join("\n")
+              : analysis?.result.logs.join("\n") || binary?.warnings.join("\n") || "(no output)"}
+          </pre>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn small"
+              disabled={!analysis}
+              onClick={() => void exportReport("md")}
+            >
+              EXPORT MD
+            </button>
+            <button
+              className="btn small"
+              disabled={!analysis}
+              onClick={() => void exportReport("json")}
+            >
+              EXPORT JSON
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -791,7 +1186,7 @@ export default function App() {
         </span>
         <span className="status-right">
           {analysis?.result.ok
-            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms`
+            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s`
             : isBinary
               ? "elf2tdg artifacts · analysis backend pending"
               : "text-first workbench"}
@@ -813,6 +1208,14 @@ export default function App() {
           title={imagePreview.title}
           footer={imagePreview.footer}
           onClose={() => setImagePreview(null)}
+        />
+      )}
+
+      {compareOpen && snapshots.length >= 2 && (
+        <RunCompare
+          a={snapshots[snapshots.length - 2]}
+          b={snapshots[snapshots.length - 1]}
+          onClose={() => setCompareOpen(false)}
         />
       )}
 

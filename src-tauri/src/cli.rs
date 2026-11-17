@@ -1,9 +1,20 @@
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use crate::dot;
 use crate::model::AnalysisResult;
+
+/// Resource budget for one analyzer run. State-class exploration can blow up
+/// on adversarial models, so both limits are always passed to the engine.
+#[derive(Clone, Copy, Debug)]
+pub struct RunOptions {
+    pub max_states: u64,
+    pub timeout_secs: u64,
+    pub max_memory_mb: u64,
+}
 
 fn subcommand_for(path: &Path) -> &'static str {
     match path
@@ -82,7 +93,13 @@ pub(crate) fn artifact_directory() -> Result<PathBuf, String> {
     ))
 }
 
-pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
+pub fn run_analysis(
+    cli: &Path,
+    path: &Path,
+    options: &RunOptions,
+    cancel: &AtomicBool,
+    mut on_line: impl FnMut(&str),
+) -> AnalysisResult {
     let started = Instant::now();
     let mut result = AnalysisResult {
         path: path.display().to_string(),
@@ -136,31 +153,106 @@ pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
         .arg("--export-wcet")
         .arg(&wcet_path)
         .arg("--max-states")
-        .arg("20000");
+        .arg(options.max_states.to_string());
+    if options.timeout_secs > 0 {
+        command.arg("--timeout").arg(options.timeout_secs.to_string());
+    }
+    if options.max_memory_mb > 0 {
+        command.arg("--max-memory").arg(options.max_memory_mb.to_string());
+    }
     if subcommand == "rtsl" {
         command.arg("--export-tdg").arg(&tdg_path);
     }
     if let Some(parent) = path.parent() {
         command.current_dir(parent);
     }
-    command.env("PATH", augmented_path(cli));
+    command
+        .env("PATH", augmented_path(cli))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    let output = match command.output() {
-        Ok(output) => output,
+    let mut child = match command.spawn() {
+        Ok(child) => child,
         Err(error) => {
             result.error = format!("failed to start ptpn: {error}");
             return result;
         }
     };
+
+    // Stream stdout/stderr line by line so the UI can show progress and the
+    // cancel command can interrupt long state-space explorations.
+    let (sender, receiver) = std::sync::mpsc::channel::<String>();
+    let mut readers = Vec::new();
+    if let Some(stdout) = child.stdout.take() {
+        let sender = sender.clone();
+        readers.push(std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(|line| line.ok()) {
+                let _ = sender.send(line);
+            }
+        }));
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let sender = sender.clone();
+        readers.push(std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(|line| line.ok()) {
+                let _ = sender.send(line);
+            }
+        }));
+    }
+    drop(sender);
+
+    // The engine enforces --timeout itself and then exits with partial results
+    // (E-PERF-003, exit 5). This watchdog covers a wedged engine: after a grace
+    // period the process is terminated and the run is reported as timed out.
+    let watchdog = (options.timeout_secs > 0)
+        .then(|| started + std::time::Duration::from_secs(options.timeout_secs + 20));
+    let mut canceled = false;
+    let mut watchdog_fired = false;
+    let status = loop {
+        while let Ok(line) = receiver.try_recv() {
+            let line = line.trim_end().to_string();
+            if line.is_empty() {
+                continue;
+            }
+            on_line(&line);
+            result.logs.push(line);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(error) => {
+                result.error = format!("lost the ptpn process: {error}");
+                break None;
+            }
+        }
+        if cancel.load(Ordering::Relaxed) {
+            canceled = true;
+            let _ = child.kill();
+            break child.wait().ok();
+        }
+        if let Some(deadline) = watchdog {
+            if Instant::now() >= deadline {
+                watchdog_fired = true;
+                let _ = child.kill();
+                break child.wait().ok();
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+
+    for reader in readers {
+        let _ = reader.join();
+    }
+    while let Ok(line) = receiver.try_recv() {
+        if !line.trim().is_empty() {
+            result.logs.push(line);
+        }
+    }
     result.elapsed_ms = started.elapsed().as_millis();
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    result.logs = stdout
-        .lines()
-        .chain(stderr.lines())
-        .filter(|line| !line.trim().is_empty())
-        .map(str::to_string)
-        .collect();
+    result.exit_code = status.and_then(|status| status.code());
+    result.canceled = canceled;
+    result.timed_out = watchdog_fired;
+    result.partial = result.exit_code == Some(5);
 
     let ptpn_text = std::fs::read_to_string(&ptpn_path).unwrap_or_default();
     let scg_text = std::fs::read_to_string(&scg_path).unwrap_or_default();
@@ -191,42 +283,15 @@ pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
         _ => "SPEC-FIRST · TDG".to_string(),
     };
 
-    if !output.status.success() {
+    if canceled || watchdog_fired {
         result.ok = false;
-        let interesting: Vec<&String> = result
-            .logs
-            .iter()
-            .filter(|line| {
-                let lower = line.to_ascii_lowercase();
-                lower.contains("error") || lower.contains("failed") || lower.contains("unsupported")
-            })
-            .collect();
-        let tail: Vec<String> = if interesting.is_empty() {
-            result
-                .logs
-                .iter()
-                .rev()
-                .take(5)
-                .cloned()
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect()
+        result.error = if canceled {
+            format!("canceled after {} ms", result.elapsed_ms)
         } else {
-            interesting
-                .into_iter()
-                .rev()
-                .take(5)
-                .cloned()
-                .collect::<Vec<_>>()
-                .into_iter()
-                .rev()
-                .collect()
-        };
-        result.error = if tail.is_empty() {
-            format!("ptpn exited with code {:?}", output.status.code())
-        } else {
-            tail.join("\n")
+            format!(
+                "the analyzer exceeded the {} s watchdog and was terminated without partial results",
+                options.timeout_secs
+            )
         };
         return result;
     }
@@ -235,6 +300,33 @@ pub fn run_analysis(cli: &Path, path: &Path) -> AnalysisResult {
         result.error = "the analyzer produced no PTPN structure".to_string();
         result.ok = false;
         return result;
+    }
+
+    if result.exit_code != Some(0) && !result.partial {
+        result.ok = false;
+        let tail: Vec<String> = result
+            .logs
+            .iter()
+            .rev()
+            .take(5)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        result.error = if tail.is_empty() {
+            format!("ptpn exited with code {:?}", result.exit_code)
+        } else {
+            tail.join("\n")
+        };
+        return result;
+    }
+
+    if result.partial {
+        result.error = format!(
+            "resource budget reached (exit 5): the state-class graph is an incomplete prefix and metrics stay bounds. Budget: max-states {}, timeout {} s, max-memory {} MB",
+            options.max_states, options.timeout_secs, options.max_memory_mb
+        );
     }
 
     result.ok = true;

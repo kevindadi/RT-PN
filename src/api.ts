@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { AnalysisPayload, ElfWorkflow, EngineInfo } from "./types";
+import type { AnalysisOptions, AnalysisPayload, ElfWorkflow, EngineHealth, EngineInfo } from "./types";
 
 export async function pickSpecification(): Promise<string | null> {
   const selected = await open({
@@ -29,8 +29,24 @@ export async function pickElf(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
-export function analyzeModel(path: string): Promise<AnalysisPayload> {
-  return invoke<AnalysisPayload>("analyze_model", { path });
+export function analyzeModel(
+  path: string,
+  options?: AnalysisOptions,
+): Promise<AnalysisPayload> {
+  return invoke<AnalysisPayload>("analyze_model", { path, options: options ?? null });
+}
+
+/** Terminates the running analyzer process (state-space budget escape hatch). */
+export function cancelAnalysis(): Promise<void> {
+  return invoke<void>("cancel_analysis");
+}
+
+export function engineHealth(): Promise<EngineHealth[]> {
+  return invoke<EngineHealth[]>("engine_health");
+}
+
+export function writeTextFile(path: string, contents: string): Promise<void> {
+  return invoke<void>("write_text_file", { path, contents });
 }
 
 /** Runs the ELF -> readable ELF -> CFG (+ preview image) workflow. */

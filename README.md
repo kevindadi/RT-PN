@@ -96,6 +96,21 @@ The desktop app never reimplements analysis. It launches the CLI with
 `tdg|rtsl|ptpn -f … --export-ptpn --export-scg --export-metrics --export-wcet`
 and parses the exports.
 
+### Resource budgets and long runs
+
+Petri-net state-class reachability is exponential in the model, so every
+analysis is bounded. The inspector's `RESOURCE BUDGET` block passes
+`--max-states` (default 20000), `--timeout` (default 120 s) and `--max-memory`
+(default 2048 MB) to `ptpn`; setting timeout or memory to `0` disables that
+bound. When a limit fires the engine exits `5` and the workbench marks the run
+`PARTIAL` — the state class graph is then an incomplete prefix and the metrics
+are conservative bounds. Runs can be cancelled while the engine explores
+(the process is terminated), analyzer output streams into the run log, and
+`RUN HISTORY` keeps structured snapshots so the latest two runs can be compared
+(WCRT, state counts, exactness and truncation regressions). `EXPORT MD` /
+`EXPORT JSON` write a report containing the budgets, partial flag, metrics and
+stage text.
+
 Exports default to `%LOCALAPPDATA%\RT-PN\artifacts` on Windows. If that
 directory is not writable (for example under a restricted runner), RT-PN probes
 and falls back to `.rt-pn-artifacts` in the current workspace. Override with:

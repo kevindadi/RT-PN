@@ -63,6 +63,10 @@ export interface AnalysisResult {
   tdg: Record<string, unknown>;
   workflow_label: string;
   binary_artifact: string;
+  exit_code: number | null;
+  partial: boolean;
+  canceled: boolean;
+  timed_out: boolean;
 }
 
 export interface AnalysisPayload {
@@ -92,6 +96,17 @@ export interface EngineInfo {
   path: string;
   source: string;
   external_override: boolean;
+}
+
+export interface EngineHealth extends EngineInfo {
+  name: string;
+  version: string | null;
+}
+
+export interface AnalysisOptions {
+  max_states?: number;
+  timeout_secs?: number;
+  max_memory_mb?: number;
 }
 
 export interface RunRecord {

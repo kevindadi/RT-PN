@@ -7,14 +7,109 @@ mod model;
 mod workbench;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use serde::Serialize;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::binary::ElfWorkflow;
 use crate::graph::Graph;
 use crate::model::AnalysisResult;
 use crate::workbench::WorkbenchDocs;
+
+#[derive(Debug, Default, Deserialize)]
+struct AnalysisOptions {
+    max_states: Option<u64>,
+    timeout_secs: Option<u64>,
+    max_memory_mb: Option<u64>,
+}
+
+impl AnalysisOptions {
+    /// Clamp the UI values into the range the analyzer accepts. The defaults keep
+    /// state-class exploration bounded: Petri-net reachability graphs can grow
+    /// exponentially, so a run must never be unbounded by accident.
+    fn budgets(self) -> cli::RunOptions {
+        let max_states = self.max_states.unwrap_or(20_000).clamp(100, 1_000_000);
+        let timeout_secs = match self.timeout_secs.unwrap_or(120) {
+            0 => 0,
+            value => value.clamp(5, 3_600),
+        };
+        let max_memory_mb = match self.max_memory_mb.unwrap_or(2_048) {
+            0 => 0,
+            value => value.clamp(64, 65_536),
+        };
+        cli::RunOptions {
+            max_states,
+            timeout_secs,
+            max_memory_mb,
+        }
+    }
+}
+
+#[derive(Default)]
+struct RunState {
+    cancel: Arc<AtomicBool>,
+}
+
+#[derive(Serialize)]
+struct EngineHealth {
+    name: String,
+    path: String,
+    source: String,
+    external_override: bool,
+    version: Option<String>,
+}
+
+fn probe_version(path: &std::path::Path) -> Option<String> {
+    let output = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .ok()?;
+    let text = if output.stdout.is_empty() {
+        String::from_utf8_lossy(&output.stderr).to_string()
+    } else {
+        String::from_utf8_lossy(&output.stdout).to_string()
+    };
+    text.lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+#[tauri::command]
+fn engine_health() -> Vec<EngineHealth> {
+    let mut engines = Vec::new();
+    for name in ["ptpn", "elf2tdg"] {
+        match engine::locate(name, engine::current_mode()) {
+            Some(found) => engines.push(EngineHealth {
+                name: name.to_string(),
+                path: found.path.display().to_string(),
+                source: found.source.as_str().to_string(),
+                external_override: found.external_override,
+                version: probe_version(&found.path),
+            }),
+            None => engines.push(EngineHealth {
+                name: name.to_string(),
+                path: String::new(),
+                source: "missing".to_string(),
+                external_override: false,
+                version: None,
+            }),
+        }
+    }
+    engines
+}
+
+#[tauri::command]
+fn cancel_analysis(state: State<'_, RunState>) {
+    state.cancel.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|error| format!("cannot write {path}: {error}"))
+}
 
 #[derive(Serialize)]
 struct AnalysisPayload {
@@ -51,13 +146,30 @@ fn startup_paths() -> Vec<String> {
 }
 
 #[tauri::command]
-async fn analyze_model(path: String) -> Result<AnalysisPayload, String> {
+async fn analyze_model(
+    path: String,
+    options: Option<AnalysisOptions>,
+    app: tauri::AppHandle,
+    state: State<'_, RunState>,
+) -> Result<AnalysisPayload, String> {
+    let budgets = options.unwrap_or_default().budgets();
+    state.cancel.store(false, Ordering::Relaxed);
+    let cancel = Arc::clone(&state.cancel);
     tauri::async_runtime::spawn_blocking(move || {
         let cli_path = cli::resolve_cli().ok_or_else(|| {
             "ptpn CLI not found. Set PTPN_BIN or build the C++ analyzer.".to_string()
         })?;
         let input = PathBuf::from(&path);
-        let mut result = cli::run_analysis(&cli_path, &input);
+        let started = std::time::Instant::now();
+        let mut result = cli::run_analysis(&cli_path, &input, &budgets, &cancel, |line| {
+            let _ = app.emit(
+                "analysis-log",
+                serde_json::json!({
+                    "line": line,
+                    "elapsed_ms": started.elapsed().as_millis(),
+                }),
+            );
+        });
         if result.workflow_label.is_empty() {
             result.workflow_label = "SPEC-FIRST".to_string();
         }
@@ -109,6 +221,7 @@ fn webview_data_directory(app: &tauri::AppHandle) -> PathBuf {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(RunState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_directory = webview_data_directory(app.handle());
@@ -128,9 +241,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             analyze_model,
             analyze_elf,
+            cancel_analysis,
+            engine_health,
             resolve_cli_path,
             resolve_elf2tdg_path,
-            startup_paths
+            startup_paths,
+            write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running RT-PN");
