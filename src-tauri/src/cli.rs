@@ -266,48 +266,5 @@ fn augmented_path(cli: &Path) -> std::ffi::OsString {
 }
 
 pub fn resolve_cli() -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("PTPN_BIN") {
-        let path = PathBuf::from(path);
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-
-    let mut bases = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        for ancestor in cwd.ancestors().take(7) {
-            bases.push(ancestor.to_path_buf());
-        }
-        // Development layout: PrioritizedTPN/rt-pn (submodule) and the C++
-        // analyzer build live as siblings.
-        bases.push(cwd.join("..").join("PrioritizedTPN"));
-        bases.push(cwd.join("..").join("..").join("PrioritizedTPN"));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            for ancestor in parent.ancestors().take(7) {
-                bases.push(ancestor.to_path_buf());
-            }
-        }
-    }
-
-    let relative = [
-        "cmake-build-debug-mingw/ptpn.exe",
-        "cmake-build-debug-mingw/ptpn",
-        "cmake-build-desktop-mingw/ptpn.exe",
-        "cmake-build-desktop-mingw/ptpn",
-        "build/ptpn.exe",
-        "build/ptpn",
-        "ptpn.exe",
-        "ptpn",
-    ];
-    for base in bases {
-        for rel in relative {
-            let candidate = base.join(rel);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
+    crate::engine::locate("ptpn", crate::engine::current_mode()).map(|binary| binary.path)
 }

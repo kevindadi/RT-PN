@@ -38,6 +38,7 @@ import { GraphPreview, SvgPreview } from "./GraphPreview";
 import type {
   AnalysisPayload,
   ElfWorkflow,
+  EngineInfo,
   Graph,
   RunRecord,
   Stage,
@@ -186,6 +187,14 @@ function fileName(path: string | null | undefined): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+function engineTag(engine: EngineInfo): string {
+  return engine.external_override ? `${engine.source.toUpperCase()}·EXTERNAL` : engine.source.toUpperCase();
+}
+
+function engineDirectory(path: string): string {
+  return path.replace(/[\\/][^\\/]+$/, "");
+}
+
 function isBinaryPath(path: string): boolean {
   return /\.(elf|out|axf)$/i.test(path);
 }
@@ -214,8 +223,8 @@ export default function App() {
   });
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
-  const [cli, setCli] = useState<string | null>(null);
-  const [elf2tdg, setElf2tdg] = useState<string | null>(null);
+  const [cli, setCli] = useState<EngineInfo | null>(null);
+  const [elf2tdg, setElf2tdg] = useState<EngineInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const openPathRef = useRef<(path: string) => void>(() => undefined);
 
@@ -417,10 +426,10 @@ export default function App() {
 
   const openExample = useCallback(async () => {
     if (!cli) {
-      setError("ptpn CLI not found; set PTPN_BIN first.");
+      setError("ptpn CLI not found; build it with `just engines` or set PTPN_BIN.");
       return;
     }
-    const cliDirectory = cli.replace(/[\\/][^\\/]+$/, "");
+    const cliDirectory = engineDirectory(cli.path);
     const candidate = `${cliDirectory}/../example/motivating-examples/hw.json`;
     await runSpec(candidate, true);
   }, [cli, runSpec]);
@@ -683,13 +692,17 @@ export default function App() {
           </div>
 
           <div className="sidebar-bottom">
-            <div className="engine-label" title={cli ?? undefined}>
+            <div className="engine-label" title={cli?.path ?? undefined}>
               <Cpu size={11} />
-              <span>{cli ? `PTPN  ${cli}` : "PTPN NOT FOUND · set PTPN_BIN"}</span>
+              <span>{cli ? `PTPN [${engineTag(cli)}] ${cli.path}` : "PTPN NOT FOUND · just engines"}</span>
             </div>
-            <div className="engine-label" title={elf2tdg ?? undefined}>
+            <div className="engine-label" title={elf2tdg?.path ?? undefined}>
               <Binary size={11} />
-              <span>{elf2tdg ? `ELF2TDG  ${elf2tdg}` : "ELF2TDG NOT FOUND · just engines"}</span>
+              <span>
+                {elf2tdg
+                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.path}`
+                  : "ELF2TDG NOT FOUND · just engines"}
+              </span>
             </div>
             <div className="brand-foot">RT-PN · NATIVE RUST WORKBENCH</div>
           </div>

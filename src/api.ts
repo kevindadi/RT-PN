@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { AnalysisPayload, ElfWorkflow } from "./types";
+import type { AnalysisPayload, ElfWorkflow, EngineInfo } from "./types";
 
 export async function pickSpecification(): Promise<string | null> {
   const selected = await open({
@@ -38,10 +38,10 @@ export function analyzeElf(path: string): Promise<ElfWorkflow> {
   return invoke<ElfWorkflow>("analyze_elf", { path });
 }
 
-export function resolveCliPath(): Promise<string | null> {
-  return invoke<string | null>("resolve_cli_path");
+export function resolveCliPath(): Promise<EngineInfo | null> {
+  return invoke<EngineInfo | null>("resolve_cli_path");
 }
 
-export function resolveElf2tdgPath(): Promise<string | null> {
-  return invoke<string | null>("resolve_elf2tdg_path");
+export function resolveElf2tdgPath(): Promise<EngineInfo | null> {
+  return invoke<EngineInfo | null>("resolve_elf2tdg_path");
 }

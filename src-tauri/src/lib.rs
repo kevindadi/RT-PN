@@ -1,6 +1,7 @@
 mod binary;
 mod cli;
 mod dot;
+mod engine;
 mod graph;
 mod model;
 mod workbench;
@@ -24,13 +25,13 @@ struct AnalysisPayload {
 }
 
 #[tauri::command]
-fn resolve_elf2tdg_path() -> Option<String> {
-    binary::resolve_elf2tdg().map(|path| path.display().to_string())
+fn resolve_elf2tdg_path() -> Option<engine::EngineInfo> {
+    engine::locate("elf2tdg", engine::current_mode()).map(|binary| binary.info())
 }
 
 #[tauri::command]
-fn resolve_cli_path() -> Option<String> {
-    cli::resolve_cli().map(|path| path.display().to_string())
+fn resolve_cli_path() -> Option<engine::EngineInfo> {
+    engine::locate("ptpn", engine::current_mode()).map(|binary| binary.info())
 }
 
 #[tauri::command]

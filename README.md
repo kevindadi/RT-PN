@@ -78,13 +78,19 @@ directory when `RT_PN_WEBVIEW_DATA_DIR` is set.
 The plain `npm run tauri dev` still works once the sidecars are staged with
 `just stage`.
 
-`ptpn` discovery order:
+Engine discovery depends on the build mode. `just stage` builds both engines and
+stages them as Tauri sidecars, so neither mode needs extra configuration by
+default:
 
-1. `PTPN_BIN`
-2. `ptpn.exe` next to the app executable (Tauri sidecar)
-3. `cmake-build-debug-mingw/ptpn.exe` (and the release/desktop variants)
-4. executable-relative build directories
-5. `PATH`
+- **Debug builds** (`just dev`): `PTPN_BIN` / `ELF2TDG_BIN` override → sidecar
+  next to the app executable → repository build trees (`cmake-build-*/`,
+  `build/ptpn`, `build/cargo/release`) → `PATH`. This keeps isolated engine
+  development possible; the sidebar shows which source was used.
+- **Release builds** (installers / portable package): `PTPN_BIN` /
+  `ELF2TDG_BIN` override is honored but flagged as `ENV·EXTERNAL` in the
+  sidebar → `ptpn.exe` / `elf2tdg.exe` (or `bin/…`) next to the app executable
+  → error. The working directory and `PATH` are never scanned, so a stray CLI
+  cannot shadow the bundled sidecars.
 
 The desktop app never reimplements analysis. It launches the CLI with
 `tdg|rtsl|ptpn -f … --export-ptpn --export-scg --export-metrics --export-wcet`

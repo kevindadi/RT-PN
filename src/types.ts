@@ -88,6 +88,12 @@ export interface ElfWorkflow {
   warnings: string[];
 }
 
+export interface EngineInfo {
+  path: string;
+  source: string;
+  external_override: boolean;
+}
+
 export interface RunRecord {
   time: string;
   verdict: string;

@@ -106,43 +106,10 @@ fn find_dot() -> Option<PathBuf> {
     which("dot.exe").or_else(|| which("dot"))
 }
 
-/// Resolve the external `elf2tdg` CLI: env override, sidecar next to the app,
-/// development build tree, then `PATH`.
+/// Resolve the external `elf2tdg` CLI with the workbench engine policy
+/// (bundled sidecar in release builds, development trees in debug builds).
 pub fn resolve_elf2tdg() -> Option<PathBuf> {
-    if let Ok(value) = env::var("ELF2TDG_BIN") {
-        let path = PathBuf::from(value);
-        if path.is_file() {
-            return Some(path);
-        }
-    }
-
-    let mut bases = Vec::new();
-    if let Ok(cwd) = env::current_dir() {
-        bases.extend(cwd.ancestors().take(7).map(Path::to_path_buf));
-    }
-    if let Ok(exe) = env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            bases.extend(parent.ancestors().take(7).map(Path::to_path_buf));
-        }
-    }
-
-    let relative = [
-        "elf2tdg.exe",
-        "elf2tdg",
-        "build/cargo/release/elf2tdg.exe",
-        "build/cargo/release/elf2tdg",
-        "target/release/elf2tdg.exe",
-        "target/release/elf2tdg",
-    ];
-    for base in bases {
-        for entry in relative {
-            let candidate = base.join(entry);
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    which("elf2tdg.exe").or_else(|| which("elf2tdg"))
+    crate::engine::locate("elf2tdg", crate::engine::current_mode()).map(|binary| binary.path)
 }
 
 fn run_tool(program: &Path, args: &[String]) -> Result<(), String> {
