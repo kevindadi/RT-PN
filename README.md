@@ -127,9 +127,9 @@ The application icon is generated from `scripts/make-icon.ps1`
 (`npm run tauri -- icon src-tauri/icons/source.png`); the generated
 `src-tauri/icons/` set is committed because the Windows bundlers need it.
 
-Other recipes: `just test` (engine tests + typecheck + e2e), `just engines`
-(engine builds only), `just update-engines` (bump the submodule pins), and
-`just clean`.
+Other recipes: `just test` (engine tests + desktop backend tests + typecheck +
+e2e), `just engines` (engine builds only), `just update-engines` (bump the
+submodule pins), and `just clean`.
 
 ## Keyboard
 

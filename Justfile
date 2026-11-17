@@ -54,9 +54,10 @@ dist: build
 versions:
     node scripts/versions.mjs
 
-# Engine tests plus the end-to-end smoke test through the staged sidecars.
+# Engine tests, desktop backend tests, typecheck and the end-to-end smoke test.
 test: test-engines
     npm run typecheck
+    node scripts/test-desktop.mjs
     node scripts/e2e.mjs
 
 test-engines:

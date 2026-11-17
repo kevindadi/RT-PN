@@ -470,6 +470,41 @@ fn readable_cfg(cfg: &Value, json_path: &Path, dot_path: &Path, svg_path: Option
     )
 }
 
+fn elf_view_args(input: &Path, output: &Path) -> Vec<String> {
+    vec![
+        "--view".to_string(),
+        "elf".to_string(),
+        "--output".to_string(),
+        output.display().to_string(),
+        input.display().to_string(),
+    ]
+}
+
+fn cfg_json_args(input: &Path, output: &Path) -> Vec<String> {
+    vec![
+        "--view".to_string(),
+        "cfg".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--no-cfg-instructions".to_string(),
+        "--output".to_string(),
+        output.display().to_string(),
+        input.display().to_string(),
+    ]
+}
+
+fn cfg_dot_args(input: &Path, output: &Path) -> Vec<String> {
+    vec![
+        "--view".to_string(),
+        "cfg".to_string(),
+        "--format".to_string(),
+        "dot".to_string(),
+        "--output".to_string(),
+        output.display().to_string(),
+        input.display().to_string(),
+    ]
+}
+
 /// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
 pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
     let program = resolve_elf2tdg().ok_or_else(|| {
@@ -487,40 +522,11 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
     let mut warnings = Vec::new();
 
     // 1. Loader view: readable ELF layout (Mermaid source file).
-    run_tool(
-        &program,
-        &[
-            "--view".to_string(),
-            "elf".to_string(),
-            "--output".to_string(),
-            elf_mmd.display().to_string(),
-        ],
-    )?;
+    run_tool(&program, &elf_view_args(elf, &elf_mmd))?;
 
     // 2. CFG views: readable JSON plus a DOT rendering source.
-    run_tool(
-        &program,
-        &[
-            "--view".to_string(),
-            "cfg".to_string(),
-            "--format".to_string(),
-            "json".to_string(),
-            "--no-cfg-instructions".to_string(),
-            "--output".to_string(),
-            cfg_json.display().to_string(),
-        ],
-    )?;
-    run_tool(
-        &program,
-        &[
-            "--view".to_string(),
-            "cfg".to_string(),
-            "--format".to_string(),
-            "dot".to_string(),
-            "--output".to_string(),
-            cfg_dot.display().to_string(),
-        ],
-    )?;
+    run_tool(&program, &cfg_json_args(elf, &cfg_json))?;
+    run_tool(&program, &cfg_dot_args(elf, &cfg_dot))?;
 
     let layout = fs::read_to_string(&elf_mmd)
         .map_err(|error| format!("cannot read {}: {error}", elf_mmd.display()))?;
@@ -599,4 +605,85 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
         artifacts,
         warnings,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_temp_artifacts<T>(run: impl FnOnce() -> T) -> T {
+        // Keep the scratch artifacts inside the workspace build directory: the
+        // system temp directory and the pre-existing target tree are not
+        // writable by every restricted agent/CI child process.
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("build")
+            .join(format!("elf-workflow-test-{}", std::process::id()));
+        let previous = std::env::var_os("PTPN_ARTIFACT_DIR");
+        std::env::set_var("PTPN_ARTIFACT_DIR", &directory);
+        let value = run();
+        match previous {
+            Some(value) => std::env::set_var("PTPN_ARTIFACT_DIR", value),
+            None => std::env::remove_var("PTPN_ARTIFACT_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(directory);
+        value
+    }
+
+    #[test]
+    fn commands_pass_the_elf_input() {
+        let input = Path::new("fw.elf");
+        let cases = [
+            elf_view_args(input, Path::new("art/fw.elf.mmd")),
+            cfg_json_args(input, Path::new("art/fw.cfg.json")),
+            cfg_dot_args(input, Path::new("art/fw.cfg.dot")),
+        ];
+        for args in cases {
+            assert_eq!(args.last().map(String::as_str), Some("fw.elf"));
+            assert!(args.iter().any(|arg| arg == "--view"));
+            assert!(args.iter().any(|arg| arg == "--output"));
+        }
+    }
+
+    #[test]
+    fn analyzes_the_checked_in_example_elf() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repository root");
+        let program = root.join("build/cargo/release").join(bin("elf2tdg"));
+        let fixture = root.join(
+            "engines/elf2tdg/examples/rust-concurrency/artifacts/rust-concurrency-analysis.elf",
+        );
+        if !program.is_file() || !fixture.is_file() {
+            eprintln!(
+                "skipping ELF workflow test: run `just engine-elf2tdg` and check out the elf2tdg engine first"
+            );
+            return;
+        }
+        std::env::set_var("ELF2TDG_BIN", &program);
+        let workflow = with_temp_artifacts(|| {
+            let workflow = analyze(&fixture).expect("ELF workflow must succeed");
+            // The scratch directory is removed after the closure returns, so
+            // check the on-disk artifacts here.
+            assert!(workflow.artifacts_dir.is_dir());
+            for artifact in &workflow.artifacts {
+                assert!(
+                    Path::new(artifact).is_file(),
+                    "missing artifact {artifact}"
+                );
+            }
+            workflow
+        });
+        assert!(workflow.elf_view.contains("flowchart"));
+        assert!(workflow.functions > 0, "CFG must contain functions");
+        assert!(!workflow.cfg_text.is_empty());
+    }
+
+    fn bin(name: &str) -> String {
+        if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.to_string()
+        }
+    }
 }
