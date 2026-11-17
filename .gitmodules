@@ -1,0 +1,10 @@
+[submodule "engines/prioritized-tpn"]
+	path = engines/prioritized-tpn
+	url = https://github.com/kevindadi/PrioritizedTPN
+	branch = ptpn
+	ignore = dirty
+[submodule "engines/elf2tdg"]
+	path = engines/elf2tdg
+	url = https://github.com/kevindadi/elf2tdg
+	branch = main
+	ignore = dirty
