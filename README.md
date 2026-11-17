@@ -172,4 +172,11 @@ src-tauri/src/       Rust backend
 - Unified build: `just` + engine submodules; both CLIs ship as Tauri sidecars.
 - Qt desktop: replaced by RT-PN; the C++ CLI remains unchanged.
 
+## License
+
+MIT — see [LICENSE](LICENSE). The bundled analyzer engine
+([PrioritizedTPN](https://github.com/kevindadi/PrioritizedTPN)) is MIT and the
+ELF extractor ([elf2tdg](https://github.com/kevindadi/elf2tdg)) is
+MIT OR Apache-2.0.
+
 
