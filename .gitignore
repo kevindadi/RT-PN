@@ -13,3 +13,8 @@
 
 **/.rt-pn-artifacts
 
+# Unified build outputs
+/build
+/src-tauri/binaries
+/.env.local
+
