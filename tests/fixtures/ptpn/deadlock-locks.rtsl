@@ -1,0 +1,28 @@
+// Lock-order inversion across two cores: low takes mutexA then mutexB, high
+// takes mutexB then mutexA. Both hold one lock and wait for the other, so the
+// state-class graph contains a reachable deadlock (used by `just test`).
+system deadlock_demo {
+  cpus 2
+  cores_per_cpu 1
+  time_unit ms
+  policy fixed
+
+  task low: aperiodic {
+    core 0
+    priority 10
+    locks mutexA, mutexB
+    time [ [1, 1], [1, 1], [1, 1], [1, 1], [1, 1] ] estimated by "datasheet"
+  }
+
+  task high: aperiodic {
+    core 1
+    priority 20
+    locks mutexB, mutexA
+    time [ [1, 1], [1, 1], [1, 1], [1, 1], [1, 1] ] estimated by "datasheet"
+  }
+
+  start low
+  start high
+  end low
+  end high
+}

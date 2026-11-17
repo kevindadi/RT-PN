@@ -333,7 +333,7 @@ pub fn run_analysis(
     result
 }
 
-fn augmented_path(cli: &Path) -> std::ffi::OsString {
+pub(crate) fn augmented_path(cli: &Path) -> std::ffi::OsString {
     let mut entries: Vec<PathBuf> = Vec::new();
     if let Some(parent) = cli.parent() {
         entries.push(parent.to_path_buf());

@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { AnalysisOptions, AnalysisPayload, ElfWorkflow, EngineHealth, EngineInfo } from "./types";
+import type {
+  AnalysisOptions,
+  AnalysisPayload,
+  ElfWorkflow,
+  EngineHealth,
+  EngineInfo,
+  FilledSource,
+  PendingMeasurement,
+} from "./types";
 
 export async function pickSpecification(): Promise<string | null> {
   const selected = await open({
@@ -47,6 +55,19 @@ export function engineHealth(): Promise<EngineHealth[]> {
 
 export function writeTextFile(path: string, contents: string): Promise<void> {
   return invoke<void>("write_text_file", { path, contents });
+}
+
+/** Pending `measured by llm` tasks reported by `ptpn check`. */
+export function pendingTimings(path: string): Promise<PendingMeasurement[]> {
+  return invoke<PendingMeasurement[]>("pending_timings", { path });
+}
+
+/** Runs `ptpn fill` and returns the patched source written next to the artifacts. */
+export function fillTimings(
+  path: string,
+  values: Record<string, Array<[number, number]>>,
+): Promise<FilledSource> {
+  return invoke<FilledSource>("fill_timings", { path, values });
 }
 
 /** Runs the ELF -> readable ELF -> CFG (+ preview image) workflow. */

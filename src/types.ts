@@ -69,11 +69,36 @@ export interface AnalysisResult {
   timed_out: boolean;
 }
 
+export interface TraceStep {
+  state: string;
+  transition: string;
+  marking: string;
+  active: string;
+  elapsed: string;
+}
+
 export interface AnalysisPayload {
   result: AnalysisResult;
   docs: WorkbenchDocs;
   ptpn_graph: Graph | null;
   state_graph: Graph | null;
+  deadlock_trace: TraceStep[] | null;
+  deadlock_graph: Graph | null;
+}
+
+export interface PendingMeasurement {
+  task: string;
+  runs: number | null;
+  timeout: number | null;
+  expected_segments: number | null;
+  line: number | null;
+  column: number | null;
+}
+
+export interface FilledSource {
+  path: string;
+  filled: number;
+  remaining_pending: number;
 }
 
 export interface ElfWorkflow {

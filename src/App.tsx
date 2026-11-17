@@ -32,6 +32,8 @@ import {
   analyzeModel,
   cancelAnalysis,
   engineHealth,
+  fillTimings,
+  pendingTimings,
   pickElf,
   pickSpecification,
   writeTextFile,
@@ -43,8 +45,10 @@ import type {
   ElfWorkflow,
   EngineHealth,
   Graph,
+  PendingMeasurement,
   RunRecord,
   Stage,
+  TraceStep,
   Workflow,
   WorkbenchDocs,
 } from "./types";
@@ -130,6 +134,7 @@ interface Metrics {
   deadlocks?: number;
   tasks?: Array<{ wcrt?: number; name?: string }>;
   cores?: unknown[];
+  deadlock_states?: number[];
 }
 
 interface Budget {
@@ -183,6 +188,17 @@ function reportNumber(value: number | undefined): string {
   return value === undefined ? "—" : String(value);
 }
 
+function deadlockTraceText(trace: TraceStep[]): string {
+  const lines = ["DEADLOCK COUNTEREXAMPLE", ""];
+  trace.forEach((step, index) => {
+    if (index > 0) {
+      lines.push(`   ── ${step.transition || "(transition)"} ──▶`);
+    }
+    lines.push(` ${step.state}  t=${step.elapsed || "?"}  M=${step.marking}`);
+  });
+  return lines.join("\n");
+}
+
 function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string {
   const result = payload.result;
   const metrics = result.metrics ?? {};
@@ -213,6 +229,11 @@ function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string 
     JSON.stringify(metrics, null, 2),
     "```",
     "",
+  ];
+  if (payload.deadlock_trace && payload.deadlock_trace.length > 0) {
+    lines.push("## Deadlock counterexample", "", "```text", deadlockTraceText(payload.deadlock_trace), "```", "");
+  }
+  lines.push(
     "## DAG",
     "",
     "```text",
@@ -225,7 +246,7 @@ function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string 
     payload.docs.report,
     "```",
     "",
-  ];
+  );
   if (result.error) {
     lines.push("## Error", "", "```text", result.error, "```", "");
   }
@@ -447,6 +468,9 @@ export default function App() {
   const [liveElapsed, setLiveElapsed] = useState(0);
   const [snapshots, setSnapshots] = useState<RunSnapshot[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [pending, setPending] = useState<PendingMeasurement[]>([]);
+  const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
+  const [fillBusy, setFillBusy] = useState(false);
   const runStartedRef = useRef(0);
   const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -468,6 +492,18 @@ export default function App() {
     ? binary?.warnings.join("\n") ||
       "elf2tdg loader view → readable CFG → Graphviz preview. Threads/net analysis is pending."
     : analysis?.docs?.assumptions ?? "";
+
+  const deadlockSteps = analysis?.deadlock_trace ?? null;
+  const deadlockCount = metrics.deadlock_states?.length ?? 0;
+
+  const openDeadlockPreview = () => {
+    if (!analysis?.deadlock_graph) return;
+    setPreview({
+      graph: analysis.deadlock_graph,
+      title: "DEADLOCK COUNTEREXAMPLE",
+      footer: "Shortest path from the initial state class to a reachable deadlock",
+    });
+  };
 
   useEffect(() => {
     engineHealth()
@@ -569,6 +605,8 @@ export default function App() {
       if (newProject) setHistory([]);
       setLiveLog([]);
       setLiveElapsed(0);
+      setPending([]);
+      setPendingInputs({});
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
@@ -709,6 +747,74 @@ export default function App() {
     setStatus({ text: "CANCELING", tone: "warn" });
     await cancelAnalysis();
   }, []);
+
+  const fillPending = useCallback(async () => {
+    if (!currentPath || pending.length === 0) return;
+    const values: Record<string, Array<[number, number]>> = {};
+    for (const measurement of pending) {
+      const numbers = (pendingInputs[measurement.task] ?? "")
+        .split(/[\s,;]+/)
+        .map((token) => Number(token))
+        .filter((value) => Number.isFinite(value));
+      if (numbers.length === 0 || numbers.length % 2 !== 0) {
+        setError(`Task ${measurement.task}: enter interval pairs, e.g. "1,2, 2,3, 1,2".`);
+        return;
+      }
+      const intervals: Array<[number, number]> = [];
+      for (let index = 0; index < numbers.length; index += 2) {
+        intervals.push([numbers[index], numbers[index + 1]]);
+      }
+      if (
+        measurement.expected_segments !== null &&
+        intervals.length !== measurement.expected_segments
+      ) {
+        setError(
+          `Task ${measurement.task}: expected ${measurement.expected_segments} intervals, got ${intervals.length}.`,
+        );
+        return;
+      }
+      values[measurement.task] = intervals;
+    }
+    try {
+      setFillBusy(true);
+      const filled = await fillTimings(currentPath, values);
+      setPending([]);
+      setFillBusy(false);
+      setDetail({
+        title: "TIMING FILLED",
+        body: `filled ${filled.filled} task(s) · ${filled.remaining_pending} pending remaining\n\n${filled.path}\n\nRe-analysing the patched source.`,
+      });
+      await runSpec(filled.path, false);
+    } catch (reason) {
+      setFillBusy(false);
+      setError(String(reason));
+    }
+  }, [currentPath, pending, pendingInputs, runSpec]);
+
+  const checkPending = useCallback(async () => {
+    if (!currentPath) return;
+    try {
+      const list = await pendingTimings(currentPath);
+      setPending(list);
+      setPendingInputs(
+        Object.fromEntries(list.map((measurement) => [measurement.task, ""])),
+      );
+      setDetail({
+        title: "PENDING TIMING",
+        body:
+          list.length === 0
+            ? "No pending `measured by llm` intervals in this model."
+            : list
+                .map(
+                  (measurement) =>
+                    `${measurement.task}  line ${measurement.line ?? "?"}  runs ${measurement.runs ?? "?"}  expected ${measurement.expected_segments ?? "?"} intervals`,
+                )
+                .join("\n"),
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, [currentPath]);
 
   const openSpecDialog = useCallback(async () => {
     const path = await pickSpecification();
@@ -942,6 +1048,84 @@ export default function App() {
             </div>
           ) : (
             <div className="faint">no artifacts yet</div>
+          )}
+
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="COUNTEREXAMPLE" />
+              {deadlockSteps && deadlockSteps.length > 0 ? (
+                <>
+                  <pre className="assumptions">{deadlockTraceText(deadlockSteps)}</pre>
+                  <button className="btn wide bad" onClick={openDeadlockPreview}>
+                    <Eye size={13} /> TRACE PREVIEW
+                  </button>
+                </>
+              ) : (
+                <div className="faint">
+                  {analysis?.result.ok
+                    ? "no reachable deadlock in the explored state space"
+                    : "run an analysis to search for deadlocks"}
+                </div>
+              )}
+            </>
+          )}
+
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="PENDING TIMING" />
+              <button
+                className="btn wide"
+                disabled={!currentPath || busy || fillBusy}
+                onClick={() => void checkPending()}
+              >
+                <RefreshCw size={13} /> CHECK PENDING
+              </button>
+              {pending.length === 0 ? (
+                <div className="faint">
+                  lists `measured by llm` tasks and fills their intervals via `ptpn fill`
+                </div>
+              ) : (
+                <div>
+                  {pending.map((measurement) => (
+                    <div key={measurement.task} style={{ marginTop: 8, fontSize: 11 }}>
+                      <div className="mono faint">
+                        {measurement.task} · line {measurement.line ?? "?"} · expected{" "}
+                        {measurement.expected_segments ?? "?"} intervals
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="min,max, min,max, ..."
+                        value={pendingInputs[measurement.task] ?? ""}
+                        onChange={(event) =>
+                          setPendingInputs((previous) => ({
+                            ...previous,
+                            [measurement.task]: event.target.value,
+                          }))
+                        }
+                        style={{
+                          width: "100%",
+                          background: "#0b1422",
+                          color: "#dce8f5",
+                          border: "1px solid #1d3350",
+                          borderRadius: 3,
+                          padding: "2px 6px",
+                          fontFamily: "inherit",
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    className="btn wide accent"
+                    disabled={fillBusy}
+                    onClick={() => void fillPending()}
+                  >
+                    <Play size={13} /> FILL &amp; ANALYZE
+                  </button>
+                </div>
+              )}
+            </>
           )}
 
           <div className="divider" />
@@ -1186,7 +1370,7 @@ export default function App() {
         </span>
         <span className="status-right">
           {analysis?.result.ok
-            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s`
+            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s${deadlockCount > 0 ? ` · ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
             : isBinary
               ? "elf2tdg artifacts · analysis backend pending"
               : "text-first workbench"}

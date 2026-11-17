@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { bin, detectToolchain, ensureDir, exists, log, paths, run, which } from "./lib.mjs";
+import { bin, capture, detectToolchain, ensureDir, exists, log, paths, run, which } from "./lib.mjs";
 
 const toolchain = detectToolchain({ required: true });
 const suffix = bin("");
@@ -109,6 +109,63 @@ try {
   const metrics = JSON.parse(fs.readFileSync(metricsJson, "utf8"));
   if (typeof metrics !== "object" || metrics === null) throw new Error("ptpn did not emit metrics JSON");
   log(`ptpn metrics fields: ${Object.keys(metrics).slice(0, 8).join(", ")}`);
+
+  // ---- 4. deadlock counterexample ----------------------------------------
+  const deadlockModel = path.join(paths.root, "tests", "fixtures", "ptpn", "deadlock-locks.rtsl");
+  const deadlockMetrics = path.join(paths.e2e, "deadlock.metrics.json");
+  run(
+    ptpn,
+    [
+      "rtsl",
+      "-f", deadlockModel,
+      "--max-states", "5000",
+      "--timeout", "30",
+      "--export-metrics", deadlockMetrics,
+      "--export-scg", path.join(paths.e2e, "deadlock.scg.dot"),
+    ],
+    { cwd: paths.ptpnEngine },
+  );
+  const deadlockReport = JSON.parse(fs.readFileSync(deadlockMetrics, "utf8"));
+  if (!Array.isArray(deadlockReport.deadlock_states) || deadlockReport.deadlock_states.length === 0) {
+    throw new Error("deadlock fixture did not produce deadlock states");
+  }
+  log(`deadlock fixture: ${deadlockReport.deadlock_states.length} deadlock state(s)`);
+
+  // ---- 5. pending `measured by llm` + ptpn fill --------------------------
+  const pendingModel = path.join(
+    paths.ptpnEngine,
+    "example",
+    "introduction",
+    "demo.rtsl",
+  );
+  const checkEnvelope = JSON.parse(
+    capture(ptpn, ["check", "-f", pendingModel, "--diagnostics", "json"], {
+      cwd: paths.ptpnEngine,
+    }),
+  );
+  const pending = checkEnvelope.result?.pending_measurements ?? [];
+  if (pending.length === 0) {
+    throw new Error("demo.rtsl should report one pending `measured by llm` task");
+  }
+  const valuesPath = path.join(paths.e2e, "pending.values.json");
+  fs.writeFileSync(valuesPath, JSON.stringify({ fusion: [[1, 2], [3, 4], [1, 2]] }), "utf8");
+  const fillEnvelope = JSON.parse(
+    capture(
+      ptpn,
+      [
+        "fill",
+        "-f", pendingModel,
+        "--values", valuesPath,
+        "--diagnostics", "json",
+      ],
+      { cwd: paths.ptpnEngine },
+    ),
+  );
+  const patched = fillEnvelope.result?.source ?? "";
+  if (!patched.includes("time") || patched.length === 0) {
+    throw new Error("ptpn fill did not return the patched source");
+  }
+  log(`pending timing fill: ${pending[0].task} -> ${patched.split("\n").length} patched lines`);
 
   console.log("\nE2E smoke test passed: elf2tdg + ptpn sidecars are runnable.");
 } catch (error) {

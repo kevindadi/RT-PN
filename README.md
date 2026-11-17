@@ -111,6 +111,20 @@ are conservative bounds. Runs can be cancelled while the engine explores
 `EXPORT JSON` write a report containing the budgets, partial flag, metrics and
 stage text.
 
+### Deadlock counterexamples and pending timings
+
+When the explored state space contains reachable deadlocks, the inspector's
+`COUNTEREXAMPLE` section shows the shortest transition path from the initial
+state class to a deadlock (markings included) and opens it as a graph preview;
+the same trace is included in exported reports.
+
+RTSL models with `measured by llm` timing are not analyzable until the pending
+intervals are filled. `PENDING TIMING` runs `ptpn check --diagnostics json`,
+lists the pending tasks with their expected interval count, and `FILL &
+ANALYZE` feeds the entered `[min, max]` pairs to `ptpn fill`. The patched source
+is written to the artifact directory and analyzed immediately, leaving the
+original model untouched.
+
 Exports default to `%LOCALAPPDATA%\RT-PN\artifacts` on Windows. If that
 directory is not writable (for example under a restricted runner), RT-PN probes
 and falls back to `.rt-pn-artifacts` in the current workspace. Override with:
