@@ -413,9 +413,105 @@ fn cancel_analysis(state: State<'_, RunState>) {
     state.cancel.store(true, Ordering::Relaxed);
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct AllocateOptions {
+    max_candidates: Option<u64>,
+    candidate_max_states: Option<u64>,
+    objective: Option<String>,
+    require_certified_wcet: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct AllocationReport {
+    report: serde_json::Value,
+    path: String,
+}
+
+#[tauri::command]
+fn allocate_cores(
+    path: String,
+    options: Option<AllocateOptions>,
+) -> Result<AllocationReport, String> {
+    let cli = cli::resolve_cli()
+        .ok_or_else(|| "ptpn CLI not found; build it with `just engines`.".to_string())?;
+    let input = PathBuf::from(&path);
+    let options = options.unwrap_or_default();
+    let directory = cli::artifact_directory()?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let stem = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("model");
+    let report_path = directory.join(format!("{stem}.allocation-{stamp}.json"));
+
+    let working_directory = input.parent().map(std::path::Path::to_path_buf);
+    let mut arguments: Vec<std::ffi::OsString> = vec![
+        "allocate".into(),
+        "-f".into(),
+        input.as_os_str().to_os_string(),
+        "-o".into(),
+        report_path.clone().into_os_string(),
+        "--diagnostics".into(),
+        "json".into(),
+    ];
+    if let Some(max_candidates) = options.max_candidates {
+        arguments.push("--max-candidates".into());
+        arguments.push(max_candidates.clamp(1, 4_096).to_string().into());
+    }
+    if let Some(max_states) = options.candidate_max_states {
+        arguments.push("--candidate-max-states".into());
+        arguments.push(max_states.clamp(100, 200_000).to_string().into());
+    }
+    if let Some(objective) = options.objective {
+        arguments.push("--objective".into());
+        arguments.push(objective.into());
+    }
+    if options.require_certified_wcet.unwrap_or(false) {
+        arguments.push("--require-certified-wcet".into());
+    }
+    let borrowed: Vec<&std::ffi::OsStr> = arguments.iter().map(std::ffi::OsString::as_os_str).collect();
+    let output = run_tool_output(&cli, &borrowed, working_directory.as_deref())?;
+    let envelope = json_from_stdout(&output)
+        .ok_or_else(|| "ptpn allocate did not produce a JSON envelope".to_string())?;
+    if envelope.get("ok").and_then(|value| value.as_bool()) != Some(true) {
+        let diagnostics = envelope
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.get("message").and_then(|value| value.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
+        return Err(if diagnostics.is_empty() {
+            "ptpn allocate failed".to_string()
+        } else {
+            diagnostics
+        });
+    }
+    let text = std::fs::read_to_string(&report_path)
+        .map_err(|error| format!("cannot read {}: {error}", report_path.display()))?;
+    let report: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| format!("invalid allocation report: {error}"))?;
+    Ok(AllocationReport {
+        report,
+        path: report_path.display().to_string(),
+    })
+}
+
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|error| format!("cannot write {path}: {error}"))
+}
+
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|error| format!("cannot read {path}: {error}"))
 }
 
 #[derive(Serialize)]
@@ -622,12 +718,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            allocate_cores,
             analyze_model,
             analyze_elf,
             cancel_analysis,
             engine_health,
             fill_timings,
             pending_timings,
+            read_text_file,
             resolve_cli_path,
             resolve_elf2tdg_path,
             startup_paths,

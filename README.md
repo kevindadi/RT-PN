@@ -125,6 +125,17 @@ ANALYZE` feeds the entered `[min, max]` pairs to `ptpn fill`. The patched source
 is written to the artifact directory and analyzed immediately, leaving the
 original model untouched.
 
+### Charts, core allocation and project files
+
+- `WCRT / SLACK` draws a compact per-task bar chart (deadline marker, red on a
+  deadline miss) from the metrics JSON.
+- `CORE ALLOCATION` runs `ptpn allocate` with bounded candidates and shows the
+  search summary, the best assignment and the Pareto front with WCRT, core
+  load, deadlock count and state count per candidate.
+- `SAVE PROJECT` / `OPEN PROJECT` store `{version, workflow, modelPath, stage,
+  budgets, savedAt}` in a `.rtpn` file; opening a project restores the budget,
+  re-runs the model and returns to the saved stage.
+
 Exports default to `%LOCALAPPDATA%\RT-PN\artifacts` on Windows. If that
 directory is not writable (for example under a restricted runner), RT-PN probes
 and falls back to `.rt-pn-artifacts` in the current workspace. Override with:

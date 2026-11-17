@@ -101,6 +101,20 @@ export interface FilledSource {
   remaining_pending: number;
 }
 
+export interface AllocationReport {
+  report: Record<string, unknown>;
+  path: string;
+}
+
+export interface ProjectFile {
+  version: number;
+  workflow: "spec" | "binary";
+  modelPath: string;
+  stage: Stage;
+  budgets: { maxStates: number; timeoutSecs: number; maxMemoryMb: number };
+  savedAt: string;
+}
+
 export interface ElfWorkflow {
   elf_path: string;
   file_size: number;

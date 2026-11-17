@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type {
+  AllocationReport,
   AnalysisOptions,
   AnalysisPayload,
   ElfWorkflow,
@@ -68,6 +69,36 @@ export function fillTimings(
   values: Record<string, Array<[number, number]>>,
 ): Promise<FilledSource> {
   return invoke<FilledSource>("fill_timings", { path, values });
+}
+
+/** Searches core allocations and returns the exported allocation report. */
+export function allocateCores(
+  path: string,
+  options?: {
+    max_candidates?: number;
+    candidate_max_states?: number;
+    objective?: string;
+    require_certified_wcet?: boolean;
+  },
+): Promise<AllocationReport> {
+  return invoke<AllocationReport>("allocate_cores", { path, options: options ?? null });
+}
+
+export function readTextFile(path: string): Promise<string> {
+  return invoke<string>("read_text_file", { path });
+}
+
+export async function pickProject(): Promise<string | null> {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    title: "Open an RT-PN project",
+    filters: [
+      { name: "RT-PN project", extensions: ["rtpn"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  });
+  return typeof selected === "string" ? selected : null;
 }
 
 /** Runs the ELF -> readable ELF -> CFG (+ preview image) workflow. */

@@ -28,6 +28,7 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 
 import {
+  allocateCores,
   analyzeElf,
   analyzeModel,
   cancelAnalysis,
@@ -35,17 +36,21 @@ import {
   fillTimings,
   pendingTimings,
   pickElf,
+  pickProject,
   pickSpecification,
+  readTextFile,
   writeTextFile,
 } from "./api";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
 import type {
+  AllocationReport,
   AnalysisPayload,
   ElfWorkflow,
   EngineHealth,
   Graph,
   PendingMeasurement,
+  ProjectFile,
   RunRecord,
   Stage,
   TraceStep,
@@ -132,7 +137,14 @@ interface Metrics {
   hyperperiod?: number;
   states?: number;
   deadlocks?: number;
-  tasks?: Array<{ wcrt?: number; name?: string }>;
+  tasks?: Array<{
+    name?: string;
+    core?: number;
+    deadline?: number;
+    wcrt?: number;
+    slack?: number | null;
+    deadline_missed?: boolean;
+  }>;
   cores?: unknown[];
   deadlock_states?: number[];
 }
@@ -255,6 +267,66 @@ function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string 
     lines.push("## Analyzer log tail", "", "```text", logTail.join("\n"), "```", "");
   }
   return lines.join("\n");
+}
+
+function WcrtChart({ tasks }: { tasks: NonNullable<Metrics["tasks"]> }) {
+  const scale = Math.max(
+    1,
+    ...tasks.map((task) => Math.max(task.wcrt ?? 0, task.deadline ?? 0)),
+  );
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      {tasks.map((task) => {
+        const wcrt = task.wcrt ?? 0;
+        const deadline = task.deadline ?? 0;
+        const missed = task.deadline_missed ?? (deadline > 0 && wcrt > deadline);
+        const slack = deadline > 0 ? deadline - wcrt : task.slack;
+        return (
+          <div key={task.name ?? "task"} style={{ fontSize: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span className="mono">{task.name ?? "task"}</span>
+              <span className="faint">
+                wcrt {wcrt}
+                {deadline > 0 ? ` / d ${deadline}` : ""}
+                {typeof slack === "number" ? ` · slack ${slack}` : ""}
+              </span>
+            </div>
+            <div
+              style={{
+                position: "relative",
+                height: 8,
+                background: "#0b1422",
+                border: "1px solid #1d3350",
+                borderRadius: 2,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  width: `${Math.min(100, (wcrt / scale) * 100)}%`,
+                  background: missed ? "#ff6b6b" : "#4fa3ff",
+                }}
+              />
+              {deadline > 0 && (
+                <div
+                  title="deadline"
+                  style={{
+                    position: "absolute",
+                    top: -3,
+                    bottom: -3,
+                    left: `${Math.min(100, (deadline / scale) * 100)}%`,
+                    width: 1,
+                    background: "#f2c14e",
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose: () => void }) {
@@ -471,6 +543,8 @@ export default function App() {
   const [pending, setPending] = useState<PendingMeasurement[]>([]);
   const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
   const [fillBusy, setFillBusy] = useState(false);
+  const [allocation, setAllocation] = useState<AllocationReport | null>(null);
+  const [allocateBusy, setAllocateBusy] = useState(false);
   const runStartedRef = useRef(0);
   const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -495,6 +569,7 @@ export default function App() {
 
   const deadlockSteps = analysis?.deadlock_trace ?? null;
   const deadlockCount = metrics.deadlock_states?.length ?? 0;
+  const taskMetrics = metrics.tasks ?? [];
 
   const openDeadlockPreview = () => {
     if (!analysis?.deadlock_graph) return;
@@ -607,6 +682,7 @@ export default function App() {
       setLiveElapsed(0);
       setPending([]);
       setPendingInputs({});
+      setAllocation(null);
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
@@ -816,6 +892,69 @@ export default function App() {
     }
   }, [currentPath]);
 
+  const runAllocation = useCallback(async () => {
+    if (!currentPath || isBinary) return;
+    setAllocateBusy(true);
+    setError(null);
+    try {
+      const report = await allocateCores(currentPath, {
+        max_candidates: 32,
+        candidate_max_states: Math.min(budget.maxStates, 20000),
+      });
+      setAllocation(report);
+      setDetail({ title: "CORE ALLOCATION", body: `report\n${report.path}` });
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setAllocateBusy(false);
+    }
+  }, [currentPath, isBinary, budget.maxStates]);
+
+  const saveProject = useCallback(async () => {
+    if (!currentPath) return;
+    const project: ProjectFile = {
+      version: 1,
+      workflow: workflow === "binary" ? "binary" : "spec",
+      modelPath: currentPath,
+      stage: activeStage,
+      budgets: budget,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      const target = await save({
+        defaultPath: "rt-pn-project.rtpn",
+        filters: [{ name: "RT-PN project", extensions: ["rtpn"] }],
+      });
+      if (!target) return;
+      await writeTextFile(target, JSON.stringify(project, null, 2));
+      setDetail({ title: "PROJECT SAVED", body: target });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, [currentPath, workflow, activeStage, budget]);
+
+  const openProject = useCallback(async () => {
+    const path = await pickProject();
+    if (!path) return;
+    try {
+      const project = JSON.parse(await readTextFile(path)) as ProjectFile;
+      if (!project.modelPath) throw new Error("project file has no modelPath");
+      setBudget(project.budgets ?? budget);
+      if (project.workflow === "binary") {
+        await runBinary(project.modelPath, true);
+      } else {
+        await runSpec(project.modelPath, true);
+      }
+      if (project.stage) setActiveStage(project.stage);
+      setDetail({
+        title: "PROJECT LOADED",
+        body: `${project.modelPath}\nstage ${project.stage}`,
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, [budget, runBinary, runSpec]);
+
   const openSpecDialog = useCallback(async () => {
     const path = await pickSpecification();
     if (path) await runSpec(path, true);
@@ -1003,6 +1142,16 @@ export default function App() {
             <button className="btn wide" onClick={() => void openExample()}>
               <Braces size={13} /> EXAMPLES
             </button>
+            <button
+              className="btn wide"
+              disabled={!currentPath}
+              onClick={() => void saveProject()}
+            >
+              <Copy size={13} /> SAVE PROJECT
+            </button>
+            <button className="btn wide" onClick={() => void openProject()}>
+              <FolderOpen size={13} /> OPEN PROJECT
+            </button>
           </div>
 
           <div className="divider" />
@@ -1048,6 +1197,85 @@ export default function App() {
             </div>
           ) : (
             <div className="faint">no artifacts yet</div>
+          )}
+
+          {!isBinary && analysis?.result.ok && taskMetrics.length > 0 && (
+            <>
+              <div className="divider" />
+              <Section title="WCRT / SLACK" />
+              <WcrtChart tasks={taskMetrics} />
+            </>
+          )}
+
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="CORE ALLOCATION" />
+              <button
+                className="btn wide"
+                disabled={!currentPath || busy || allocateBusy}
+                onClick={() => void runAllocation()}
+              >
+                <Cpu size={13} /> {allocateBusy ? "SEARCHING…" : "ALLOCATE CORES"}
+              </button>
+              {allocation ? (
+                (() => {
+                  const report = allocation.report as Record<string, unknown>;
+                  const search = (report.search ?? {}) as Record<string, unknown>;
+                  const pareto = (report.pareto ?? []) as Array<Record<string, unknown>>;
+                  const best = report.best as Record<string, unknown> | null | undefined;
+                  const assignmentText = (entry: Record<string, unknown> | null | undefined) => {
+                    const assignment = (entry?.assignment ?? []) as Array<{
+                      task?: string;
+                      core?: number;
+                    }>;
+                    return assignment.map((item) => `${item.task}→c${item.core}`).join(" ");
+                  };
+                  return (
+                    <div style={{ fontSize: 10, display: "grid", gap: 4 }}>
+                      <div className="faint">
+                        {String(search.strategy ?? "?")} · domain{" "}
+                        {String(search.domain_size ?? "?")} · evaluated{" "}
+                        {String(search.evaluated ?? "?")} · feasible{" "}
+                        {String(search.feasible_count ?? "?")}
+                      </div>
+                      {best && (
+                        <div className="mono">
+                          best {assignmentText(best)} · wcrt {String(best.max_wcrt ?? "?")} ·
+                          load {String(best.max_core_load ?? "?")}
+                        </div>
+                      )}
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ color: "#7c8ca8" }}>
+                            <th align="left">pareto</th>
+                            <th align="right">wcrt</th>
+                            <th align="right">load</th>
+                            <th align="right">dead</th>
+                            <th align="right">states</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pareto.map((candidate, index) => (
+                            <tr key={index} style={{ borderTop: "1px solid #11243b" }}>
+                              <td style={{ padding: 2 }}>{assignmentText(candidate)}</td>
+                              <td align="right">{String(candidate.max_wcrt ?? "?")}</td>
+                              <td align="right">{String(candidate.max_core_load ?? "?")}</td>
+                              <td align="right">{String(candidate.deadlock_states ?? "?")}</td>
+                              <td align="right">{String(candidate.states ?? "?")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="faint">
+                  searches allowed core assignments (RTSL `core any` or TDG `allowed_cores`)
+                </div>
+              )}
+            </>
           )}
 
           {!isBinary && (
