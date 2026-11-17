@@ -37,7 +37,11 @@ const VCPKG_TRIPLET = toolchain.cxxToolchain === "msvc" ? "x64-windows-static" :
 function buildPtpnMsvc() {
   const { msvc } = toolchain;
   const toolchainFile = path.join(toolchain.vcpkgRoot, "scripts", "buildsystems", "vcpkg.cmake");
-  const cacheFile = path.join(paths.ptpnBuild, "CMakeCache.txt");
+  // PTPN_BUILD_TESTING=1 configures a second tree that also builds the gtest
+  // suites (ctest needs them); the release tree stays test-free and fast.
+  const testing = process.env.PTPN_BUILD_TESTING === "1";
+  const buildDir = testing ? path.join(paths.build, "ptpn-test") : paths.ptpnBuild;
+  const cacheFile = path.join(buildDir, "CMakeCache.txt");
 
   // Switching C++ toolchains or triplets invalidates the whole build tree: a
   // half-reused cache would mix MSVC and MinGW artefacts.
@@ -47,14 +51,14 @@ function buildPtpnMsvc() {
     fresh ||= !cache.includes(`VCPKG_TARGET_TRIPLET:STRING=${VCPKG_TRIPLET}`);
     fresh ||= /g\+\+\.exe|gcc\.exe/i.test(cache);
   }
-  if (fresh && fs.existsSync(paths.ptpnBuild)) {
-    fs.rmSync(paths.ptpnBuild, { recursive: true, force: true });
+  if (fresh && fs.existsSync(buildDir)) {
+    fs.rmSync(buildDir, { recursive: true, force: true });
   }
-  ensureDir(paths.ptpnBuild);
+  ensureDir(buildDir);
 
   const configureArgs = [
     "-S", paths.ptpnEngine,
-    "-B", paths.ptpnBuild,
+    "-B", buildDir,
     "-G", "Ninja",
     `-DCMAKE_MAKE_PROGRAM=${toolchain.ninja}`,
     "-DCMAKE_BUILD_TYPE=Release",
@@ -66,7 +70,7 @@ function buildPtpnMsvc() {
     // Some FetchContent dependencies still declare cmake_minimum_required < 3.5,
     // which CMake 4 rejects unless the compatibility floor is lowered.
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
-    "-DBUILD_TESTING=OFF",
+    testing ? "-DBUILD_TESTING=ON" : "-DBUILD_TESTING=OFF",
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
   ];
 
@@ -89,9 +93,16 @@ function buildPtpnMsvc() {
   };
 
   run(toolchain.cmake, configureArgs, { env });
-  run(toolchain.cmake, ["--build", paths.ptpnBuild, "--parallel"], { env });
+  run(toolchain.cmake, ["--build", buildDir, "--parallel"], { env });
 
-  const binary = path.join(paths.ptpnBuild, bin("ptpn"));
+  if (testing) {
+    run("ctest", ["--test-dir", buildDir, "--output-on-failure"], {
+      env,
+      cwd: paths.ptpnEngine,
+    });
+  }
+
+  const binary = path.join(buildDir, bin("ptpn"));
   if (!exists(binary)) throw new Error(`build finished but ${binary} is missing`);
   verifyStaticMsvc(msvc, binary);
 }
