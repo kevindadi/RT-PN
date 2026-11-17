@@ -230,4 +230,51 @@ export function GraphPreview({ graph, title, footer, onClose }: GraphPreviewProp
   );
 }
 
+interface SvgPreviewProps {
+  svg: string;
+  title: string;
+  footer: string;
+  onClose: () => void;
+}
+
+/** Static preview image rendered from the Graphviz SVG output. */
+export function SvgPreview({ svg, title, footer, onClose }: SvgPreviewProps) {
+  const source = useMemo(
+    () => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+    [svg],
+  );
+  return (
+    <div className="preview-backdrop" onMouseDown={onClose}>
+      <div className="preview-window" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="preview-header">
+          <div>
+            <div className="preview-eyebrow">IMAGE PREVIEW</div>
+            <div className="preview-title">{title}</div>
+          </div>
+          <div className="preview-footer-label">{footer}</div>
+          <button className="btn ghost" onClick={onClose}>
+            CLOSE
+          </button>
+        </div>
+        <div
+          className="preview-canvas"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "auto",
+            background: "#081222",
+          }}
+        >
+          <img
+            src={source}
+            alt={title}
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 

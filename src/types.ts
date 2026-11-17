@@ -72,26 +72,20 @@ export interface AnalysisPayload {
   state_graph: Graph | null;
 }
 
-export interface BinaryDocs {
-  elf_text: string;
-  cfg_text: string;
-  threads_text: string;
-  net_text: string;
-  elf_summary: string;
-  cfg_summary: string;
-  threads_summary: string;
-  net_summary: string;
-  assumptions: string;
-  cfg_graph: Graph | null;
-  threads_graph: Graph | null;
-  net_graph: Graph | null;
-}
-
-export interface BinaryPayload {
-  docs: BinaryDocs;
+export interface ElfWorkflow {
   elf_path: string;
-  bundle_path: string | null;
   file_size: number;
+  artifacts_dir: string;
+  elf_view: string;
+  cfg_text: string;
+  cfg_svg: string;
+  cfg_graph: Graph | null;
+  functions: number;
+  blocks: number;
+  calls: number;
+  diagnostics: number;
+  artifacts: string[];
+  warnings: string[];
 }
 
 export interface RunRecord {
@@ -109,6 +103,4 @@ export type Stage =
   | "timeline"
   | "report"
   | "elf"
-  | "cfg"
-  | "threads"
-  | "net";
+  | "cfg";

@@ -25,21 +25,25 @@ graph.
 
 ### Binary-first
 
-`ELF` + an external parser bundle → `ELF`, `CFG`, `THREADS`, `NET` text stages.
-The binary analysis backend is intentionally pending: these views are parser
-artifacts and preview only, not a certified schedulability verdict.
+`ELF` → readable ELF layout → readable CFG + preview image.
 
-Bundle discovery supports both names:
+Importing an `.elf`, `.out` or `.axf` binary now runs the bundled `elf2tdg`
+extractor instead of loading a pre-made parser bundle:
 
-```text
-<elf>.bundle.json
-<stem>.bundle.json
-```
+1. `elf2tdg <elf> --view elf` writes a readable ELF loader view
+   (`<stem>.elf.mmd`, Mermaid layout source) shown in the `ELF` stage.
+2. `elf2tdg <elf> --view cfg --format json` writes a readable CFG document
+   (`<stem>.cfg.json`); the `CFG` stage renders a compact listing of functions,
+   blocks and calls, and `PREVIEW` shows the Graphviz SVG rendering of
+   `<stem>.cfg.dot` (falling back to an interactive function-level graph when
+   Graphviz is not installed).
+3. Raw `elf2tdg` outputs are kept next to the analysis artifacts
+   (`%LOCALAPPDATA%\RT-PN\artifacts\elf-*` on Windows; override with
+   `PTPN_ARTIFACT_DIR`).
 
-and the legacy `<elf>.dag.json` / `<elf>.tdg.json` net-only sidecars. Expected
-sections are `elf`, `cfg`, `threads` and `net`; nested `cfg.functions[]` blocks
-are also accepted. Binary analysis is intentionally pending, so these views are
-parser artifacts and previews, not a certified schedulability verdict.
+Threads/net stages and the PTPN analysis backend are intentionally pending:
+these views are parser artifacts and previews, not a certified schedulability
+verdict. The Rust Petri-net simulator backend is developed separately.
 
 ## Development
 
@@ -138,6 +142,7 @@ Other recipes: `just test` (engine tests + typecheck + e2e), `just engines`
 ```text
 engines/prioritized-tpn/  C++ analyzer submodule (PTPN / WCRT / deadlock CLI)
 engines/elf2tdg/          Rust ELF -> Task Dependency Graph submodule
+docs/ptpn/                Analyzer documentation moved from the CLI repository
 scripts/                  build / stage / package / version scripts
 Justfile                  unified build entry
 build/                    generated engine build outputs (ignored)
@@ -162,7 +167,8 @@ src-tauri/src/       Rust backend
 ## Status
 
 - Specification-first: functional.
-- Binary-first: parser artifacts, CFG / thread / net previews; analysis pending.
+- Binary-first: `elf2tdg` drives the ELF loader view, readable CFG and Graphviz
+  preview image; threads/net and the analysis backend are pending.
 - Unified build: `just` + engine submodules; both CLIs ship as Tauri sidecars.
 - Qt desktop: replaced by RT-PN; the C++ CLI remains unchanged.
 

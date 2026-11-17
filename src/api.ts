@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { AnalysisPayload, BinaryPayload } from "./types";
+import type { AnalysisPayload, ElfWorkflow } from "./types";
 
 export async function pickSpecification(): Promise<string | null> {
   const selected = await open({
@@ -33,10 +33,15 @@ export function analyzeModel(path: string): Promise<AnalysisPayload> {
   return invoke<AnalysisPayload>("analyze_model", { path });
 }
 
-export function loadBinary(path: string): Promise<BinaryPayload> {
-  return invoke<BinaryPayload>("load_binary", { path });
+/** Runs the ELF -> readable ELF -> CFG (+ preview image) workflow. */
+export function analyzeElf(path: string): Promise<ElfWorkflow> {
+  return invoke<ElfWorkflow>("analyze_elf", { path });
 }
 
 export function resolveCliPath(): Promise<string | null> {
   return invoke<string | null>("resolve_cli_path");
+}
+
+export function resolveElf2tdgPath(): Promise<string | null> {
+  return invoke<string | null>("resolve_elf2tdg_path");
 }

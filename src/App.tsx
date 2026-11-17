@@ -25,12 +25,19 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
 
-import { analyzeModel, loadBinary, pickElf, pickSpecification, resolveCliPath } from "./api";
+import {
+  analyzeElf,
+  analyzeModel,
+  pickElf,
+  pickSpecification,
+  resolveCliPath,
+  resolveElf2tdgPath,
+} from "./api";
 import { CodeStage } from "./CodeStage";
-import { GraphPreview } from "./GraphPreview";
+import { GraphPreview, SvgPreview } from "./GraphPreview";
 import type {
   AnalysisPayload,
-  BinaryPayload,
+  ElfWorkflow,
   Graph,
   RunRecord,
   Stage,
@@ -74,26 +81,14 @@ const STAGES: Record<
   },
   elf: {
     label: "ELF",
-    title: "ELF ARTIFACT",
-    subtitle: "ELF metadata and parser-provided sections/symbols",
+    title: "ELF LAYOUT",
+    subtitle: "Readable ELF loader view produced by elf2tdg",
     previewable: false,
   },
   cfg: {
     label: "CFG",
     title: "CONTROL-FLOW GRAPH",
-    subtitle: "Basic blocks and branches from the external parser",
-    previewable: true,
-  },
-  threads: {
-    label: "THREADS",
-    title: "THREAD CONTROL",
-    subtitle: "Thread / async task entries and control edges",
-    previewable: true,
-  },
-  net: {
-    label: "NET",
-    title: "GENERATED NET",
-    subtitle: "Unified net from the parser · analysis backend pending",
+    subtitle: "Readable CFG from elf2tdg · preview image via Graphviz",
     previewable: true,
   },
 };
@@ -116,6 +111,12 @@ interface PreviewState {
   footer: string;
 }
 
+interface ImagePreviewState {
+  svg: string;
+  title: string;
+  footer: string;
+}
+
 interface Metrics {
   schedulable?: boolean;
   exact?: boolean;
@@ -128,7 +129,7 @@ interface Metrics {
 
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
-    ? ["elf", "cfg", "threads", "net"]
+    ? ["elf", "cfg"]
     : ["dag", "ptpn", "state", "timeline", "report"];
 }
 
@@ -150,17 +151,13 @@ function stageDoc(stage: Stage, docs: WorkbenchDocs | undefined): string {
   }
 }
 
-function binaryDoc(stage: Stage, docs: BinaryPayload["docs"] | undefined): string {
-  if (!docs) return "";
+function binaryDoc(stage: Stage, elf: ElfWorkflow | null | undefined): string {
+  if (!elf) return "";
   switch (stage) {
     case "elf":
-      return docs.elf_text;
+      return elf.elf_view;
     case "cfg":
-      return docs.cfg_text;
-    case "threads":
-      return docs.threads_text;
-    case "net":
-      return docs.net_text;
+      return elf.cfg_text;
     default:
       return "";
   }
@@ -205,7 +202,7 @@ export default function App() {
   const [workflow, setWorkflow] = useState<Workflow>("none");
   const [hub, setHub] = useState(true);
   const [analysis, setAnalysis] = useState<AnalysisPayload | null>(null);
-  const [binary, setBinary] = useState<BinaryPayload | null>(null);
+  const [binary, setBinary] = useState<ElfWorkflow | null>(null);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
   const [activeStage, setActiveStage] = useState<Stage>("dag");
   const [busy, setBusy] = useState(false);
@@ -216,41 +213,36 @@ export default function App() {
     body: "Choose a workflow to begin. Text is the primary surface; graphs open only from PREVIEW.",
   });
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
   const [cli, setCli] = useState<string | null>(null);
+  const [elf2tdg, setElf2tdg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const openPathRef = useRef<(path: string) => void>(() => undefined);
 
-  const docs = workflow === "binary" ? binary?.docs : analysis?.docs;
   const metrics = (analysis?.result.metrics ?? {}) as Metrics;
   const stages = stagesFor(workflow);
   const isBinary = workflow === "binary";
   const doc = isBinary
-    ? binaryDoc(activeStage, binary?.docs)
+    ? binaryDoc(activeStage, binary)
     : stageDoc(activeStage, analysis?.docs);
-  const binarySummary = (() => {
-    if (!binary?.docs) return "";
-    switch (activeStage) {
-      case "elf":
-        return binary.docs.elf_summary;
-      case "cfg":
-        return binary.docs.cfg_summary;
-      case "threads":
-        return binary.docs.threads_summary;
-      case "net":
-        return binary.docs.net_summary;
-      default:
-        return "";
-    }
-  })();
+  const binarySummary = binary
+    ? activeStage === "elf"
+      ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
+      : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
+    : "";
   const summary = isBinary ? binarySummary : stageSummary(activeStage, analysis?.docs);
   const assumptions = isBinary
-    ? binary?.docs?.assumptions ?? ""
+    ? binary?.warnings.join("\n") ||
+      "elf2tdg loader view → readable CFG → Graphviz preview. Threads/net analysis is pending."
     : analysis?.docs?.assumptions ?? "";
 
   useEffect(() => {
     resolveCliPath()
       .then((path) => setCli(path))
       .catch(() => setCli(null));
+    resolveElf2tdgPath()
+      .then((path) => setElf2tdg(path))
+      .catch(() => setElf2tdg(null));
   }, []);
 
   useEffect(() => {
@@ -261,12 +253,14 @@ export default function App() {
           window.setTimeout(() => openPathRef.current(path), 250);
         }
       })
-      .catch(() => undefined);
-  }, []);
+      .catch(() => undefined);  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreview(null);
+      if (event.key === "Escape") {
+        setPreview(null);
+        setImagePreview(null);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -301,6 +295,7 @@ export default function App() {
   const runSpec = useCallback(
     async (path: string, newProject: boolean) => {
       setPreview(null);
+      setImagePreview(null);
       setHub(false);
       setWorkflow("spec");
       setBinary(null);
@@ -352,6 +347,7 @@ export default function App() {
   const runBinary = useCallback(
     async (path: string, newProject: boolean) => {
       setPreview(null);
+      setImagePreview(null);
       setHub(false);
       setWorkflow("binary");
       setAnalysis(null);
@@ -360,24 +356,32 @@ export default function App() {
       setError(null);
       setStatus({ text: "PARSING ELF", tone: "violet" });
       setDetail({
-        title: "BINARY ARTIFACTS",
-        body: `${path}\n\nLoading the external parser bundle.`,
+        title: "ELF WORKFLOW",
+        body: `${path}\n\nRunning the elf2tdg loader view and CFG extraction.`,
       });
       setWindowTitle(fileName(path));
       if (newProject) setHistory([]);
       try {
-        const payload = await loadBinary(path);
+        const payload = await analyzeElf(path);
         setBinary(payload);
         setBusy(false);
         setActiveStage("elf");
-        setStatus({ text: "BINARY READY", tone: "violet" });
+        setStatus({ text: "ELF READY", tone: "violet" });
+        const warningBlock =
+          payload.warnings.length > 0
+            ? `\n\nwarnings\n${payload.warnings.map((warning) => `  · ${warning}`).join("\n")}`
+            : "";
         setDetail({
-          title: "BINARY ARTIFACTS",
-          body: `ELF      ${fileName(payload.elf_path)}\nCFG      ${payload.docs.cfg_summary}\nTHREADS  ${payload.docs.threads_summary}\nNET      ${payload.docs.net_summary}\n\nThe binary analysis backend is intentionally pending.`,
+          title: "ELF WORKFLOW",
+          body:
+            `ELF      ${fileName(payload.elf_path)} (${Math.round(payload.file_size / 1024)} KB)\n` +
+            `CFG      ${payload.functions} functions · ${payload.blocks} blocks · ${payload.calls} calls\n` +
+            `PREVIEW  ${payload.cfg_svg ? "Graphviz SVG" : "interactive graph fallback"}\n` +
+            `ARTIFACTS ${payload.artifacts_dir}${warningBlock}`,
         });
         appendHistory(
-          "BINARY",
-          `CFG ${payload.docs.cfg_summary} · THR ${payload.docs.threads_summary}`,
+          "ELF",
+          `CFG ${payload.functions} fn · ${payload.calls} calls`,
         );
       } catch (reason) {
         setBusy(false);
@@ -431,18 +435,27 @@ export default function App() {
   };
 
   const openPreview = () => {
+    if (isBinary) {
+      if (activeStage !== "cfg" || !binary) return;
+      if (binary.cfg_svg) {
+        setImagePreview({
+          svg: binary.cfg_svg,
+          title: "CFG PREVIEW",
+          footer: "Graphviz rendering from the elf2tdg DOT export",
+        });
+        return;
+      }
+      if (binary.cfg_graph) {
+        setPreview({
+          graph: binary.cfg_graph,
+          title: "CFG PREVIEW",
+          footer: "Interactive function-level graph (Graphviz was not found)",
+        });
+      }
+      return;
+    }
     const graph =
-      activeStage === "ptpn"
-        ? analysis?.ptpn_graph
-        : activeStage === "state"
-          ? analysis?.state_graph
-          : activeStage === "cfg"
-            ? binary?.docs?.cfg_graph
-            : activeStage === "threads"
-              ? binary?.docs?.threads_graph
-              : activeStage === "net"
-                ? binary?.docs?.net_graph
-                : null;
+      activeStage === "ptpn" ? analysis?.ptpn_graph : activeStage === "state" ? analysis?.state_graph : null;
     if (!graph) return;
     setPreview({
       graph,
@@ -450,18 +463,12 @@ export default function App() {
       footer:
         activeStage === "ptpn"
           ? "PTPN structure from the analyzer export"
-          : activeStage === "state"
-            ? "State-class graph from the analyzer export"
-            : activeStage === "cfg"
-              ? "Control-flow graph from the external ELF parser"
-              : activeStage === "threads"
-                ? "Thread-control graph from the external ELF parser"
-                : "Unified generated net from the external ELF parser",
+          : "State-class graph from the analyzer export",
     });
   };
 
   const verdict = isBinary
-    ? { text: "BACKEND PENDING", tone: "violet" as Tone }
+    ? { text: "ELF PARSED", tone: "violet" as Tone }
     : analysis?.result.ok
       ? metricsSchedulable(analysis)
         ? { text: "SCHEDULABLE", tone: "good" as Tone }
@@ -523,7 +530,7 @@ export default function App() {
           <div className="workflow-name">{workflowLabel}</div>
           <div className="workflow-hint">
             {workflow === "binary"
-              ? "ELF → CFG / THREADS → NET"
+              ? "ELF → READABLE LAYOUT → CFG + PREVIEW"
               : workflow === "spec"
                 ? "RTSL / TDG → PTPN → SCG"
                 : "Choose a workflow to begin"}
@@ -537,6 +544,7 @@ export default function App() {
               onClick={() => {
                 setHub(true);
                 setPreview(null);
+                setImagePreview(null);
                 setWorkflow("none");
                 setAnalysis(null);
                 setBinary(null);
@@ -578,10 +586,26 @@ export default function App() {
           <Section title="ARTIFACTS" />
           {isBinary ? (
             <div className="artifact-list">
-              <Artifact label="ELF" value={binary?.docs?.elf_summary ?? "—"} />
-              <Artifact label="CFG" value={binary?.docs?.cfg_summary ?? "—"} />
-              <Artifact label="THR" value={binary?.docs?.threads_summary ?? "—"} />
-              <Artifact label="NET" value={binary?.docs?.net_summary ?? "—"} />
+              <Artifact
+                label="ELF"
+                value={binary ? `${Math.round(binary.file_size / 1024)} KB` : "—"}
+              />
+              <Artifact
+                label="CFG"
+                value={
+                  binary
+                    ? `${binary.functions} FN · ${binary.blocks} BB · ${binary.calls} CALLS`
+                    : "—"
+                }
+              />
+              <Artifact
+                label="IMG"
+                value={binary ? (binary.cfg_svg ? "Graphviz SVG" : "graph fallback") : "—"}
+              />
+              <Artifact
+                label="ART"
+                value={binary ? binary.artifacts_dir : "—"}
+              />
             </div>
           ) : analysis?.result.ok ? (
             <div className="artifact-list">
@@ -626,7 +650,7 @@ export default function App() {
           <div className={`verdict ${verdict.tone}`}>{verdict.text}</div>
           <div className="verdict-sub">
             {isBinary
-              ? "parser artifacts loaded"
+              ? "elf2tdg artifacts loaded"
               : analysis?.result.ok
                 ? "text-first analysis"
                 : "waiting for a model"}
@@ -661,7 +685,11 @@ export default function App() {
           <div className="sidebar-bottom">
             <div className="engine-label" title={cli ?? undefined}>
               <Cpu size={11} />
-              <span>{cli ? `ENGINE  ${cli}` : "ENGINE NOT FOUND · set PTPN_BIN"}</span>
+              <span>{cli ? `PTPN  ${cli}` : "PTPN NOT FOUND · set PTPN_BIN"}</span>
+            </div>
+            <div className="engine-label" title={elf2tdg ?? undefined}>
+              <Binary size={11} />
+              <span>{elf2tdg ? `ELF2TDG  ${elf2tdg}` : "ELF2TDG NOT FOUND · just engines"}</span>
             </div>
             <div className="brand-foot">RT-PN · NATIVE RUST WORKBENCH</div>
           </div>
@@ -718,8 +746,8 @@ export default function App() {
                   <div>{busy ? "Analysis is running…" : "NO DATA IN THIS STAGE"}</div>
                   <span>
                     {busy
-                      ? "The C++ analyzer is exploring the model."
-                      : "Open a model or import an ELF parser bundle."}
+                      ? "The elf2tdg loader is extracting the ELF and CFG."
+                      : "Open a model or import an ELF binary."}
                   </span>
                 </div>
               )}
@@ -740,7 +768,7 @@ export default function App() {
           <div className="detail-body">{detail.body}</div>
           <div className="divider" />
           <Section title="RUN LOG" />
-          <pre className="run-log">{analysis?.result.logs.join("\n") || binary?.docs?.assumptions || "(no output)"}</pre>
+          <pre className="run-log">{analysis?.result.logs.join("\n") || binary?.warnings.join("\n") || "(no output)"}</pre>
         </div>
       </aside>
 
@@ -752,7 +780,7 @@ export default function App() {
           {analysis?.result.ok
             ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms`
             : isBinary
-              ? "parser artifacts · analysis pending"
+              ? "elf2tdg artifacts · analysis backend pending"
               : "text-first workbench"}
         </span>
       </footer>
@@ -763,6 +791,15 @@ export default function App() {
           title={preview.title}
           footer={preview.footer}
           onClose={() => setPreview(null)}
+        />
+      )}
+
+      {imagePreview && (
+        <SvgPreview
+          svg={imagePreview.svg}
+          title={imagePreview.title}
+          footer={imagePreview.footer}
+          onClose={() => setImagePreview(null)}
         />
       )}
 
@@ -841,8 +878,8 @@ function Hub({
           <div className="hub-kicker">02 / CODE FIRST</div>
           <h2 className="violet">BINARY-FIRST</h2>
           <p>
-            Import an ELF plus the external parser bundle: ELF metadata, CFG,
-            thread control and unified net.
+            Import an ELF: elf2tdg renders a readable ELF layout, then a readable
+            CFG and a Graphviz preview image. Threads/net analysis is pending.
           </p>
           <div className="hub-spacer" />
           <button className="btn violet wide" onClick={onBinary}>
@@ -854,7 +891,7 @@ function Hub({
         <button className="btn" onClick={onExample}>
           <Braces size={13} /> LOAD HW EXAMPLE
         </button>
-        <span>Binary analysis is pending; parser artifacts are preview-only.</span>
+        <span>Threads/net analysis is pending; ELF and CFG views come from elf2tdg.</span>
       </div>
     </div>
   );

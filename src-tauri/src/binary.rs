@@ -1,599 +1,602 @@
-use std::collections::HashMap;
+// ELF workflow: drives the external elf2tdg CLI and turns its output into
+// readable artifacts plus a preview image for the workbench.
+//
+//   1. `elf2tdg <elf> --view elf`            -> readable ELF layout file
+//   2. `elf2tdg <elf> --view cfg --format json --output ...`
+//                                            -> readable CFG listing + graph
+//   3. `elf2tdg <elf> --view cfg --format dot` -> Graphviz rendering (SVG)
+//                                               used for the preview image
+//
+// Threads/net stages and any scheduling analysis are intentionally out of
+// scope: the ELF/TDG backend is still under development.
+
+use std::collections::{BTreeSet, HashMap};
+use std::env;
+use std::ffi::OsString;
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::graph::Graph;
 
+const SVG_LIMIT: usize = 8 * 1024 * 1024;
+const FUNCTION_LIMIT: usize = 120;
+const BLOCK_LIMIT: usize = 40;
+const CALL_LIMIT: usize = 12;
+
 #[derive(Clone, Debug, Default, Serialize)]
-pub struct BinaryArtifacts {
+pub struct ElfWorkflow {
     pub elf_path: PathBuf,
-    pub bundle_path: Option<PathBuf>,
-    pub elf: Value,
-    pub cfg: Value,
-    pub threads: Value,
-    pub net: Value,
-    pub has_bundle: bool,
     pub file_size: u64,
-    pub error: String,
-}
-
-#[derive(Clone, Debug, Default, Serialize)]
-pub struct BinaryDocs {
-    pub elf_text: String,
+    pub artifacts_dir: PathBuf,
+    pub elf_view: String,
     pub cfg_text: String,
-    pub threads_text: String,
-    pub net_text: String,
-    pub elf_summary: String,
-    pub cfg_summary: String,
-    pub threads_summary: String,
-    pub net_summary: String,
-    pub assumptions: String,
+    pub cfg_svg: String,
     pub cfg_graph: Option<Graph>,
-    pub threads_graph: Option<Graph>,
-    pub net_graph: Option<Graph>,
-}
-
-fn scalar(value: &Value) -> String {
-    match value {
-        Value::String(s) => s.clone(),
-        Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::Array(items) => items.iter().map(scalar).collect::<Vec<_>>().join(", "),
-        Value::Object(_) => value.to_string(),
-        Value::Null => "—".to_string(),
-    }
-}
-
-fn field(value: &Value, keys: &[&str]) -> String {
-    for key in keys {
-        if let Some(found) = value.get(*key) {
-            if !found.is_null() {
-                return scalar(found);
-            }
-        }
-    }
-    "—".to_string()
-}
-
-fn fit(value: &str, width: usize) -> String {
-    let chars: Vec<char> = value.replace('\n', " ").chars().collect();
-    if chars.len() <= width {
-        let mut result: String = chars.into_iter().collect();
-        result.push_str(&" ".repeat(width - result.chars().count()));
-        result
-    } else if width <= 1 {
-        chars.into_iter().take(width).collect()
-    } else {
-        let mut result: String = chars.into_iter().take(width - 1).collect();
-        result.push('…');
-        result
-    }
+    pub functions: usize,
+    pub blocks: usize,
+    pub calls: usize,
+    pub diagnostics: usize,
+    pub artifacts: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 fn rule() -> String {
     "─".repeat(96)
 }
 
-fn read_json(path: &Path) -> Option<Value> {
-    let text = std::fs::read_to_string(path).ok()?;
-    serde_json::from_str(&text).ok()
+fn fit(text: &str, width: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= width {
+        let mut value: String = chars.into_iter().collect();
+        value.push_str(&" ".repeat(width - value.chars().count()));
+        value
+    } else if width <= 1 {
+        chars.into_iter().take(width).collect()
+    } else {
+        let mut value: String = chars.into_iter().take(width - 1).collect();
+        value.push('…');
+        value
+    }
 }
 
-fn array(value: &Value, keys: &[&str]) -> Vec<Value> {
-    for key in keys {
-        if let Some(items) = value.get(*key).and_then(Value::as_array) {
-            return items.clone();
+fn augmented_path(program: &Path) -> OsString {
+    let mut entries: Vec<PathBuf> = Vec::new();
+    if let Some(parent) = program.parent() {
+        entries.push(parent.to_path_buf());
+    }
+    if let Some(existing) = env::var_os("PATH") {
+        entries.extend(env::split_paths(&existing));
+    }
+    env::join_paths(entries).unwrap_or_default()
+}
+
+fn which(name: &str) -> Option<PathBuf> {
+    let paths = env::var_os("PATH")?;
+    for directory in env::split_paths(&paths) {
+        let candidate = directory.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
         }
     }
-    Vec::new()
+    None
 }
 
-fn object(value: &Value, keys: &[&str]) -> Value {
-    for key in keys {
-        if let Some(found) = value.get(*key) {
-            if found.is_object() {
-                return found.clone();
+fn find_dot() -> Option<PathBuf> {
+    if let Ok(value) = env::var("DOT") {
+        let path = PathBuf::from(value);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    for candidate in [
+        "C:/Program Files/Graphviz/bin/dot.exe",
+        "C:/Program Files (x86)/Graphviz/bin/dot.exe",
+        "/usr/bin/dot",
+        "/usr/local/bin/dot",
+    ] {
+        let path = PathBuf::from(candidate);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    which("dot.exe").or_else(|| which("dot"))
+}
+
+/// Resolve the external `elf2tdg` CLI: env override, sidecar next to the app,
+/// development build tree, then `PATH`.
+pub fn resolve_elf2tdg() -> Option<PathBuf> {
+    if let Ok(value) = env::var("ELF2TDG_BIN") {
+        let path = PathBuf::from(value);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let mut bases = Vec::new();
+    if let Ok(cwd) = env::current_dir() {
+        bases.extend(cwd.ancestors().take(7).map(Path::to_path_buf));
+    }
+    if let Ok(exe) = env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            bases.extend(parent.ancestors().take(7).map(Path::to_path_buf));
+        }
+    }
+
+    let relative = [
+        "elf2tdg.exe",
+        "elf2tdg",
+        "build/cargo/release/elf2tdg.exe",
+        "build/cargo/release/elf2tdg",
+        "target/release/elf2tdg.exe",
+        "target/release/elf2tdg",
+    ];
+    for base in bases {
+        for entry in relative {
+            let candidate = base.join(entry);
+            if candidate.is_file() {
+                return Some(candidate);
             }
         }
     }
-    Value::Null
+    which("elf2tdg.exe").or_else(|| which("elf2tdg"))
 }
 
-fn records_from(items: Vec<Value>, offset: usize) -> Vec<(String, String, String, String)> {
-    items
+fn run_tool(program: &Path, args: &[String]) -> Result<(), String> {
+    let mut command = Command::new(program);
+    command.args(args);
+    command.env("PATH", augmented_path(program));
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to start {}: {error}", program.display()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let tail: Vec<&str> = stderr
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .rev()
+        .take(6)
+        .collect::<Vec<_>>()
         .into_iter()
-        .enumerate()
-        .map(|(index, item)| {
-            let id = field(&item, &["id", "name", "label", "block"]);
-            let id = if id == "—" {
-                format!("N{}", offset + index)
-            } else {
-                id
-            };
-            (
-                id,
-                field(&item, &["kind", "type"]),
-                field(&item, &["address", "addr", "entry", "entry_point"]),
-                field(&item, &["text", "function", "instructions", "detail"]),
-            )
-        })
+        .rev()
+        .collect();
+    Err(format!(
+        "{} {} failed (exit {:?})\n{}",
+        program.display(),
+        args.join(" "),
+        output.status.code(),
+        tail.join("\n")
+    ))
+}
+
+fn sanitized_stem(elf: &Path) -> String {
+    elf.file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("firmware")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
         .collect()
 }
 
-fn node_records(value: &Value, keys: &[&str]) -> Vec<(String, String, String, String)> {
-    let items = array(value, keys);
-    if !items.is_empty() {
-        return records_from(items, 0);
-    }
-    // Some parser bundles group blocks under cfg.functions[] rather than a
-    // flat cfg.nodes[] list.
-    let mut records = Vec::new();
-    for function in array(value, &["functions"]) {
-        let blocks = array(&function, &["nodes", "blocks"]);
-        let offset = records.len();
-        records.extend(records_from(blocks, offset));
-    }
-    records
+fn artifact_dir(elf: &Path) -> Result<PathBuf, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let base = crate::cli::artifact_directory()?;
+    Ok(base.join(format!(
+        "elf-{}-{}-{stamp}",
+        sanitized_stem(elf),
+        std::process::id()
+    )))
 }
 
-fn edge_records(value: &Value, ids: &HashMap<String, usize>) -> Vec<(usize, usize, String)> {
-    let mut items = array(value, &["edges", "arcs"]);
-    for function in array(value, &["functions"]) {
-        items.extend(array(&function, &["edges"]));
-    }
-    let mut records = Vec::new();
-    for item in items {
-        let source = field(&item, &["source", "from", "src"]);
-        let target = field(&item, &["target", "to", "dst"]);
-        if let (Some(from), Some(to)) = (ids.get(&source), ids.get(&target)) {
-            records.push((*from, *to, field(&item, &["kind", "label"])));
-        }
-    }
-    records
+fn elf_view_text(elf: &Path, mermaid_path: &Path, layout: &str) -> String {
+    let mut lines = Vec::new();
+    lines.push("ELF LAYOUT".to_string());
+    lines.push(format!(
+        "file        {}",
+        elf.file_name().and_then(|name| name.to_str()).unwrap_or("firmware.elf")
+    ));
+    lines.push(format!("size        {} bytes", fs::metadata(elf).map(|m| m.len()).unwrap_or(0)));
+    lines.push(format!("artifact    {}", mermaid_path.display()));
+    lines.push(format!("generator   elf2tdg --view elf (Mermaid source)"));
+    lines.push(rule());
+    lines.push(layout.to_string());
+    lines.join("\n")
 }
 
-fn graph_from(value: &Value, node_keys: &[&str], title: &str) -> Option<Graph> {
-    let records = node_records(value, node_keys);
-    if records.is_empty() {
+fn cfg_graph(cfg: &Value) -> Option<Graph> {
+    let functions = cfg.get("functions").and_then(Value::as_array)?;
+    if functions.is_empty() {
         return None;
     }
-    let ids: HashMap<String, usize> = records
-        .iter()
-        .enumerate()
-        .map(|(index, (id, _, _, _))| (id.clone(), index))
-        .collect();
-    let edges = edge_records(value, &ids);
-    Some(Graph::from_records(title, records, edges))
-}
 
-fn pretty(value: &Value, limit: usize) -> String {
-    let text = serde_json::to_string_pretty(value).unwrap_or_default();
-    let lines: Vec<&str> = text.lines().collect();
-    let mut output = lines
-        .iter()
-        .take(limit)
-        .map(|line| format!("  {line}"))
-        .collect::<Vec<_>>();
-    if lines.len() > limit {
-        output.push(format!(
-            "  NOTE  JSON preview truncated at {limit} of {} lines.",
-            lines.len()
-        ));
+    let mut records: Vec<(String, String, String, String)> = Vec::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    for function in functions.iter().take(800) {
+        let id = function
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let name = function
+            .get("primary_name")
+            .and_then(Value::as_str)
+            .unwrap_or(&id)
+            .to_string();
+        let kind = function
+            .get("kind")
+            .and_then(Value::as_str)
+            .unwrap_or("function")
+            .to_string();
+        let address = function
+            .get("address")
+            .and_then(Value::as_str)
+            .unwrap_or("—")
+            .to_string();
+        let mut extra = function
+            .get("language")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if let Some(noreturn) = function.get("noreturn").and_then(Value::as_str) {
+            if !extra.is_empty() {
+                extra.push_str(" · ");
+            }
+            extra.push_str(&format!("noreturn:{noreturn}"));
+        }
+        index.insert(id, records.len());
+        records.push((name, kind, address, extra));
     }
-    output.join("\n")
-}
 
-impl BinaryArtifacts {
-    pub fn load(elf_path: &Path) -> Self {
-        let mut artifacts = Self {
-            elf_path: elf_path.to_path_buf(),
-            file_size: std::fs::metadata(elf_path).map(|m| m.len()).unwrap_or(0),
-            ..Default::default()
+    let mut edges: Vec<(usize, usize, String)> = Vec::new();
+    let mut seen: BTreeSet<(usize, usize)> = BTreeSet::new();
+    'outer: for function in functions.iter() {
+        let Some(from) = function
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| index.get(id))
+            .copied()
+        else {
+            continue;
         };
-        let elf_string = elf_path.to_string_lossy().to_string();
-        let stem_string = elf_path.with_extension("").to_string_lossy().to_string();
-        let candidates = [
-            format!("{elf_string}.bundle.json"),
-            format!("{stem_string}.bundle.json"),
-            format!("{elf_string}.ptpn-bundle.json"),
-            format!("{stem_string}.ptpn-bundle.json"),
-            format!("{elf_string}.ptpn.json"),
-            format!("{stem_string}.ptpn.json"),
-            format!("{elf_string}.dag.json"),
-            format!("{stem_string}.dag.json"),
-            format!("{elf_string}.tdg.json"),
-            format!("{stem_string}.tdg.json"),
-        ];
-        for candidate in candidates {
-            if let Some(root) = read_json(Path::new(&candidate)) {
-                artifacts.bundle_path = Some(PathBuf::from(candidate));
-                artifacts.has_bundle = root.get("elf").is_some()
-                    || root.get("cfg").is_some()
-                    || root.get("threads").is_some()
-                    || root.get("net").is_some();
-                artifacts.elf = object(&root, &["elf"]);
-                artifacts.cfg = object(&root, &["cfg", "control_flow", "controlFlow"]);
-                artifacts.threads = object(&root, &["threads", "thread_control", "threadControl"]);
-                artifacts.net = object(&root, &["net", "unified_net", "unifiedNet", "tdg", "dag"]);
-                if artifacts.net.is_null()
-                    && (root.get("nodes").is_some() || root.get("configuration").is_some())
-                {
-                    artifacts.net = root;
+        let Some(blocks) = function.get("blocks").and_then(Value::as_array) else {
+            continue;
+        };
+        for block in blocks {
+            let Some(calls) = block.get("calls").and_then(Value::as_array) else {
+                continue;
+            };
+            for call in calls {
+                let Some(target) = call
+                    .get("target_function")
+                    .and_then(Value::as_str)
+                    .and_then(|id| index.get(id))
+                    .copied()
+                else {
+                    continue;
+                };
+                if target == from || !seen.insert((from, target)) {
+                    continue;
                 }
-                break;
+                edges.push((from, target, "call".to_string()));
+                if edges.len() >= 3000 {
+                    break 'outer;
+                }
             }
         }
-        if artifacts.elf.is_null() {
-            artifacts.elf = json!({
-                "file": elf_path.file_name().and_then(|s| s.to_str()).unwrap_or("firmware.elf"),
-                "path": elf_path.display().to_string(),
-                "size": artifacts.file_size,
-            });
-        }
-        artifacts
     }
+
+    Some(Graph::from_records("Control-flow graph", records, edges))
 }
 
-pub fn render(artifacts: &BinaryArtifacts) -> BinaryDocs {
-    let mut docs = BinaryDocs::default();
-    let file_name = artifacts
-        .elf_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("firmware.elf");
+struct CfgStats {
+    functions: usize,
+    blocks: usize,
+    calls: usize,
+    diagnostics: usize,
+}
 
-    let mut elf_lines = Vec::new();
-    elf_lines.push("ELF ARTIFACT".to_string());
-    elf_lines.push(format!("file        {file_name}"));
-    elf_lines.push(format!("path        {}", artifacts.elf_path.display()));
-    elf_lines.push(format!("size        {} bytes", artifacts.file_size));
-    elf_lines.push(rule());
-    elf_lines.push("METADATA".to_string());
-    for key in [
-        "format",
-        "class",
-        "endian",
-        "machine",
-        "architecture",
-        "arch",
-        "language",
-        "frontend",
-        "runtime",
-        "entry",
-        "entry_point",
-        "compiler",
-        "target",
-    ] {
-        if artifacts.elf.get(key).is_some() {
-            elf_lines.push(format!(
-                "  {}{}",
-                fit(key, 16),
-                field(&artifacts.elf, &[key])
-            ));
-        }
-    }
-    let sections = array(&artifacts.elf, &["sections"]);
-    if !sections.is_empty() {
-        elf_lines.push(String::new());
-        elf_lines.push(format!("SECTIONS  {}", sections.len()));
-        elf_lines.push(format!(
-            "  {}{}{}FLAGS",
-            fit("NAME", 22),
-            fit("ADDRESS", 14),
-            fit("SIZE", 10)
-        ));
-        for section in sections.iter().take(120) {
-            elf_lines.push(format!(
-                "  {}{}{}{}",
-                fit(&field(section, &["name", "id"]), 22),
-                fit(&field(section, &["address", "addr"]), 14),
-                fit(&field(section, &["size"]), 10),
-                field(section, &["flags", "type"])
-            ));
-        }
-    }
-    let symbols = array(&artifacts.elf, &["symbols", "functions"]);
-    if !symbols.is_empty() {
-        elf_lines.push(String::new());
-        elf_lines.push(format!("SYMBOLS  {}", symbols.len()));
-        elf_lines.push(format!("  {}{}KIND", fit("NAME", 30), fit("ADDRESS", 14)));
-        for symbol in symbols.iter().take(160) {
-            elf_lines.push(format!(
-                "  {}{}{}",
-                fit(&field(symbol, &["name", "id"]), 30),
-                fit(&field(symbol, &["address", "addr"]), 14),
-                field(symbol, &["kind", "type"])
-            ));
-        }
-    }
-    if artifacts.bundle_path.is_none() {
-        elf_lines.push(String::new());
-        elf_lines.push("  NOTE  No parser bundle was found next to this ELF.".to_string());
-        elf_lines.push(
-            "        Expected <elf>.bundle.json with elf/cfg/threads/net sections.".to_string(),
-        );
-    }
-    docs.elf_text = elf_lines.join("\n");
+fn readable_cfg(cfg: &Value, json_path: &Path, dot_path: &Path, svg_path: Option<&Path>) -> (String, CfgStats) {
+    let functions = cfg
+        .get("functions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let diagnostics = cfg
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .map(|items| items.len())
+        .unwrap_or(0);
 
-    let cfg = graph_from(&artifacts.cfg, &["nodes", "blocks"], "CFG");
-    let cfg_records = node_records(&artifacts.cfg, &["nodes", "blocks"]);
-    let cfg_edges = cfg.as_ref().map(|g| g.edges.len()).unwrap_or(0);
-    let mut cfg_lines = Vec::new();
-    cfg_lines.push("CONTROL-FLOW GRAPH".to_string());
-    cfg_lines.push(format!("source  {file_name}"));
-    cfg_lines.push(rule());
-    if cfg_records.is_empty() {
-        cfg_lines.push("  No CFG artifacts in the parser bundle.".to_string());
-        cfg_lines.push(
-            "  Expected: cfg.nodes[] / cfg.edges[] (or cfg.functions[] with blocks).".to_string(),
-        );
-    } else {
-        cfg_lines.push(format!(
-            "{} basic blocks  ·  {} edges",
-            cfg_records.len(),
-            cfg_edges
-        ));
-        cfg_lines.push(String::new());
-        cfg_lines.push("BLOCKS".to_string());
-        cfg_lines.push(format!(
-            "  {}{}{}DETAIL",
-            fit("ID", 22),
-            fit("KIND", 12),
-            fit("ADDRESS", 14)
-        ));
-        for (id, kind, address, detail) in cfg_records.iter().take(260) {
-            cfg_lines.push(format!(
-                "  {}{}{}{}",
-                fit(id, 22),
-                fit(kind, 12),
-                fit(address, 14),
-                detail
-            ));
+    let mut blocks_total = 0usize;
+    let mut calls_total = 0usize;
+    for function in &functions {
+        for block in function.get("blocks").and_then(Value::as_array).into_iter().flatten() {
+            blocks_total += 1;
+            calls_total += block
+                .get("calls")
+                .and_then(Value::as_array)
+                .map(|calls| calls.len())
+                .unwrap_or(0);
         }
-        if let Some(graph) = &cfg {
-            if !graph.edges.is_empty() {
-                cfg_lines.push(String::new());
-                cfg_lines.push(format!("EDGES  {}", graph.edges.len()));
-                for edge in graph.edges.iter().take(400) {
-                    cfg_lines.push(format!(
-                        "  {}  →  {}{}",
-                        fit(&graph.nodes[edge.from].id, 22),
-                        fit(&graph.nodes[edge.to].id, 22),
-                        if edge.label == "—" {
-                            String::new()
-                        } else {
-                            format!("  {}", edge.label)
-                        }
-                    ));
-                }
+    }
+
+    let mut lines = Vec::new();
+    lines.push("CONTROL-FLOW GRAPH".to_string());
+    lines.push(format!(
+        "schema      {}",
+        cfg.get("cfg_schema_version").and_then(Value::as_str).unwrap_or("—")
+    ));
+    if let Some(image) = cfg.get("image") {
+        lines.push(format!(
+            "image       arch={} entry={} type={}",
+            image.get("arch").and_then(Value::as_str).unwrap_or("—"),
+            image.get("entry").and_then(Value::as_str).unwrap_or("—"),
+            image.get("elf_type").and_then(Value::as_str).unwrap_or("—"),
+        ));
+    }
+    lines.push(format!(
+        "functions   {}\nblocks      {}\ncalls       {}\ndiagnostics {}",
+        functions.len(),
+        blocks_total,
+        calls_total,
+        diagnostics
+    ));
+    lines.push(format!("artifact    {}", json_path.display()));
+    lines.push(format!("dot         {}", dot_path.display()));
+    if let Some(svg) = svg_path {
+        lines.push(format!("preview     {}", svg.display()));
+    }
+    if let Some(roots) = cfg.get("pointer_roots").and_then(Value::as_array) {
+        if !roots.is_empty() {
+            let shown: Vec<String> = roots
+                .iter()
+                .take(16)
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            lines.push(format!("roots       {} ({})", roots.len(), shown.join(", ")));
+        }
+    }
+    lines.push(rule());
+    lines.push("FUNCTIONS".to_string());
+    lines.push(format!(
+        "  {}{}{}DETAIL",
+        fit("NAME", 34),
+        fit("ADDRESS", 14),
+        fit("KIND", 12)
+    ));
+    for function in functions.iter().take(FUNCTION_LIMIT) {
+        let name = function
+            .get("primary_name")
+            .and_then(Value::as_str)
+            .unwrap_or("—");
+        let address = function
+            .get("address")
+            .and_then(Value::as_str)
+            .unwrap_or("—");
+        let kind = function.get("kind").and_then(Value::as_str).unwrap_or("—");
+        let mut detail = function
+            .get("language")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if let Some(noreturn) = function.get("noreturn").and_then(Value::as_str) {
+            if !detail.is_empty() {
+                detail.push_str(" · ");
+            }
+            detail.push_str(&format!("noreturn:{noreturn}"));
+        }
+        lines.push(format!(
+            "  {}{}{}{}",
+            fit(name, 34),
+            fit(address, 14),
+            fit(kind, 12),
+            detail
+        ));
+
+        let blocks = function.get("blocks").and_then(Value::as_array);
+        for block in blocks.into_iter().flatten().take(BLOCK_LIMIT) {
+            let block_id = block
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("—");
+            let block_address = block
+                .get("address")
+                .and_then(Value::as_str)
+                .unwrap_or("—");
+            let block_size = block.get("size").and_then(Value::as_u64).unwrap_or(0);
+            let terminator = block
+                .get("terminator")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            lines.push(format!(
+                "    {}  size={}  {}",
+                fit(&format!("{block_id} @{block_address}"), 44),
+                block_size,
+                terminator
+            ));
+            let calls = block.get("calls").and_then(Value::as_array);
+            for call in calls.into_iter().flatten().take(CALL_LIMIT) {
+                let site = call.get("site").and_then(Value::as_str).unwrap_or("—");
+                let target = call
+                    .get("target_function")
+                    .and_then(Value::as_str)
+                    .or_else(|| call.get("target").and_then(Value::as_str))
+                    .unwrap_or("unresolved");
+                let flags = {
+                    let mut flags = Vec::new();
+                    if call.get("unresolved").and_then(Value::as_bool).unwrap_or(false) {
+                        flags.push("unresolved");
+                    }
+                    if call.get("noreturn").and_then(Value::as_bool).unwrap_or(false) {
+                        flags.push("noreturn");
+                    }
+                    if call.get("conditional").and_then(Value::as_bool).unwrap_or(false) {
+                        flags.push("conditional");
+                    }
+                    if flags.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", flags.join(","))
+                    }
+                };
+                lines.push(format!("      -> {} @{}{}", target, site, flags));
             }
         }
     }
-    docs.cfg_text = cfg_lines.join("\n");
-    docs.cfg_graph = cfg;
+    if functions.len() > FUNCTION_LIMIT {
+        lines.push(format!(
+            "  NOTE  listing truncated at {FUNCTION_LIMIT} of {} functions; full data in the JSON artifact.",
+            functions.len()
+        ));
+    }
 
-    let thread_records = node_records(&artifacts.threads, &["threads", "nodes", "tasks"]);
-    let threads = graph_from(
-        &artifacts.threads,
-        &["threads", "nodes", "tasks"],
-        "THREADS",
-    );
-    let mut thread_lines = Vec::new();
-    thread_lines.push("THREAD CONTROL".to_string());
-    thread_lines.push(format!("source  {file_name}"));
-    thread_lines.push(rule());
-    if thread_records.is_empty() {
-        thread_lines.push("  No thread-control artifacts in the parser bundle.".to_string());
-        thread_lines.push(
-            "  Expected: threads.runtime / frontend, threads[] or nodes[], edges[].".to_string(),
-        );
-    } else {
-        thread_lines.push(format!(
-            "runtime   {}",
-            field(&artifacts.threads, &["runtime", "thread_runtime"])
-        ));
-        thread_lines.push(format!(
-            "frontend  {}",
-            field(&artifacts.threads, &["frontend", "language_frontend"])
-        ));
-        thread_lines.push(format!(
-            "{} thread/task entries  ·  {} edges",
-            thread_records.len(),
-            threads.as_ref().map(|g| g.edges.len()).unwrap_or(0)
-        ));
-        thread_lines.push(String::new());
-        thread_lines.push("ENTRIES".to_string());
-        thread_lines.push(format!(
-            "  {}{}{}DETAIL",
-            fit("ID", 22),
-            fit("KIND", 14),
-            fit("ENTRY", 18)
-        ));
-        for (id, kind, entry, detail) in thread_records.iter().take(160) {
-            thread_lines.push(format!(
-                "  {}{}{}{}",
-                fit(id, 22),
-                fit(kind, 14),
-                fit(entry, 18),
-                detail
-            ));
-        }
-        if let Some(graph) = &threads {
-            if !graph.edges.is_empty() {
-                thread_lines.push(String::new());
-                thread_lines.push(format!("EDGES  {}", graph.edges.len()));
-                for edge in graph.edges.iter().take(300) {
-                    thread_lines.push(format!(
-                        "  {}  →  {}{}",
-                        fit(&graph.nodes[edge.from].id, 22),
-                        fit(&graph.nodes[edge.to].id, 22),
-                        if edge.label == "—" {
-                            String::new()
-                        } else {
-                            format!("  {}", edge.label)
-                        }
+    (
+        lines.join("\n"),
+        CfgStats {
+            functions: functions.len(),
+            blocks: blocks_total,
+            calls: calls_total,
+            diagnostics,
+        },
+    )
+}
+
+/// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
+pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
+    let program = resolve_elf2tdg().ok_or_else(|| {
+        "elf2tdg CLI not found. Set ELF2TDG_BIN, or build it with `just engines`.".to_string()
+    })?;
+    let directory = artifact_dir(elf)?;
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("cannot create artifact directory {}: {error}", directory.display()))?;
+    let stem = sanitized_stem(elf);
+    let elf_mmd = directory.join(format!("{stem}.elf.mmd"));
+    let cfg_json = directory.join(format!("{stem}.cfg.json"));
+    let cfg_dot = directory.join(format!("{stem}.cfg.dot"));
+    let cfg_svg = directory.join(format!("{stem}.cfg.svg"));
+
+    let mut warnings = Vec::new();
+
+    // 1. Loader view: readable ELF layout (Mermaid source file).
+    run_tool(
+        &program,
+        &[
+            "--view".to_string(),
+            "elf".to_string(),
+            "--output".to_string(),
+            elf_mmd.display().to_string(),
+        ],
+    )?;
+
+    // 2. CFG views: readable JSON plus a DOT rendering source.
+    run_tool(
+        &program,
+        &[
+            "--view".to_string(),
+            "cfg".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+            "--no-cfg-instructions".to_string(),
+            "--output".to_string(),
+            cfg_json.display().to_string(),
+        ],
+    )?;
+    run_tool(
+        &program,
+        &[
+            "--view".to_string(),
+            "cfg".to_string(),
+            "--format".to_string(),
+            "dot".to_string(),
+            "--output".to_string(),
+            cfg_dot.display().to_string(),
+        ],
+    )?;
+
+    let layout = fs::read_to_string(&elf_mmd)
+        .map_err(|error| format!("cannot read {}: {error}", elf_mmd.display()))?;
+    let cfg_source = fs::read_to_string(&cfg_json)
+        .map_err(|error| format!("cannot read {}: {error}", cfg_json.display()))?;
+    let cfg: Value = serde_json::from_str(&cfg_source)
+        .map_err(|error| format!("invalid CFG JSON from elf2tdg: {error}"))?;
+
+    // 3. Preview image: render the DOT with Graphviz when it is available.
+    let rendered = match find_dot() {
+        Some(dot) => match run_tool(
+            &dot,
+            &[
+                "-Tsvg".to_string(),
+                cfg_dot.display().to_string(),
+                "-o".to_string(),
+                cfg_svg.display().to_string(),
+            ],
+        ) {
+            Ok(()) => match fs::read_to_string(&cfg_svg) {
+                Ok(svg) if svg.len() <= SVG_LIMIT => Some(svg),
+                Ok(svg) => {
+                    warnings.push(format!(
+                        "preview image is {} bytes (limit {SVG_LIMIT}); using the interactive graph instead",
+                        svg.len()
                     ));
+                    None
                 }
-            }
-        }
-    }
-    docs.threads_text = thread_lines.join("\n");
-    docs.threads_graph = threads;
-
-    let net_records = node_records(&artifacts.net, &["tasks", "nodes", "places"]);
-    let net_graph = graph_from(&artifacts.net, &["tasks", "nodes", "places"], "NET");
-    let mut net_lines = Vec::new();
-    net_lines.push("GENERATED UNIFIED NET".to_string());
-    net_lines.push(format!("source  {file_name}"));
-    if let Some(path) = &artifacts.bundle_path {
-        net_lines.push(format!(
-            "bundle  {}",
-            path.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("bundle")
-        ));
-    }
-    net_lines.push(rule());
-    if artifacts.net.is_null() || net_records.is_empty() {
-        net_lines.push("  No generated net in the parser bundle.".to_string());
-        net_lines.push("  Expected: net (or tdg/dag) in the unified format.".to_string());
-        net_lines
-            .push("  The analysis backend is intentionally pending in this workflow.".to_string());
-    } else {
-        net_lines.push(format!(
-            "format    {}",
-            field(&artifacts.net, &["format", "schema", "kind"])
-        ));
-        let configuration = artifacts
-            .net
-            .get("configuration")
-            .cloned()
-            .unwrap_or(Value::Null);
-        if configuration.is_object() {
-            net_lines.push(format!("policy    {}", field(&configuration, &["policy"])));
-            net_lines.push(format!(
-                "cores     {}",
-                field(&configuration, &["num_cpus"])
-            ));
-        }
-        net_lines.push(format!(
-            "{} nodes  ·  {} edges",
-            net_records.len(),
-            net_graph.as_ref().map(|g| g.edges.len()).unwrap_or(0)
-        ));
-        net_lines.push(String::new());
-        net_lines.push("NODES".to_string());
-        net_lines.push(format!(
-            "  {}{}{}EXTRA",
-            fit("ID", 24),
-            fit("KIND", 12),
-            fit("DETAIL", 18)
-        ));
-        for (id, kind, detail, extra) in net_records.iter().take(300) {
-            net_lines.push(format!(
-                "  {}{}{}{}",
-                fit(id, 24),
-                fit(kind, 12),
-                fit(detail, 18),
-                extra
-            ));
-        }
-        if let Some(graph) = &net_graph {
-            if !graph.edges.is_empty() {
-                net_lines.push(String::new());
-                net_lines.push(format!("EDGES  {}", graph.edges.len()));
-                for edge in graph.edges.iter().take(400) {
-                    net_lines.push(format!(
-                        "  {}  →  {}{}",
-                        fit(&graph.nodes[edge.from].id, 24),
-                        fit(&graph.nodes[edge.to].id, 24),
-                        if edge.label == "—" {
-                            String::new()
-                        } else {
-                            format!("  {}", edge.label)
-                        }
-                    ));
+                Err(error) => {
+                    warnings.push(format!("cannot read rendered preview: {error}"));
+                    None
                 }
+            },
+            Err(error) => {
+                warnings.push(format!("Graphviz failed: {error}"));
+                None
             }
+        },
+        None => {
+            warnings.push(
+                "Graphviz `dot` was not found; the preview falls back to the interactive graph"
+                    .to_string(),
+            );
+            None
         }
-        net_lines.push(String::new());
-        net_lines.push(
-            "  NOTE  This is the generated-net preview. The binary analysis backend is pending."
-                .to_string(),
-        );
-    }
-    docs.net_text = net_lines.join("\n");
-    docs.net_graph = net_graph;
+    };
 
-    docs.elf_summary = format!("{file_name}  ·  {} bytes", artifacts.file_size);
-    docs.cfg_summary = format!(
-        "{} BLOCKS  ·  {} EDGES",
-        cfg_records.len(),
-        docs.cfg_graph.as_ref().map(|g| g.edges.len()).unwrap_or(0)
+    let (cfg_text, stats) = readable_cfg(
+        &cfg,
+        &cfg_json,
+        &cfg_dot,
+        rendered.as_ref().map(|_| cfg_svg.as_path()),
     );
-    docs.threads_summary = format!(
-        "{} ENTRIES  ·  {} EDGES",
-        thread_records.len(),
-        docs.threads_graph
-            .as_ref()
-            .map(|g| g.edges.len())
-            .unwrap_or(0)
-    );
-    docs.net_summary = format!(
-        "{} NODES  ·  {} EDGES",
-        net_records.len(),
-        docs.net_graph.as_ref().map(|g| g.edges.len()).unwrap_or(0)
-    );
+    let graph = cfg_graph(&cfg);
+    let elf_view = elf_view_text(elf, &elf_mmd, &layout);
 
-    let mut assumptions = Vec::new();
-    assumptions.push("WORKFLOW      BINARY · ELF".to_string());
-    assumptions.push(format!("ELF           {file_name}"));
-    assumptions.push(format!(
-        "BUNDLE        {}",
-        artifacts
-            .bundle_path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|s| s.to_str())
-            .unwrap_or("[missing]")
-    ));
-    assumptions.push(format!(
-        "ARCH          {}",
-        field(&artifacts.elf, &["architecture", "arch", "machine"])
-    ));
-    assumptions.push(format!(
-        "LANGUAGE      {}",
-        field(&artifacts.elf, &["language", "source_language"])
-    ));
-    assumptions.push(format!(
-        "FRONTEND      {}",
-        field(&artifacts.elf, &["frontend", "runtime"])
-    ));
-    assumptions.push(format!("CFG           {}", docs.cfg_summary));
-    assumptions.push(format!("THREADS       {}", docs.threads_summary));
-    assumptions.push(format!("NET           {}", docs.net_summary));
-    assumptions.push("ANALYSIS      backend pending".to_string());
-    if !artifacts.error.is_empty() {
-        assumptions.push(format!("ERROR         {}", artifacts.error));
-    }
-    docs.assumptions = assumptions.join("\n");
+    let artifacts = vec![
+        elf_mmd.display().to_string(),
+        cfg_json.display().to_string(),
+        cfg_dot.display().to_string(),
+        cfg_svg.display().to_string(),
+    ];
 
-    if let Some(bundle) = &artifacts.bundle_path {
-        if bundle
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(|name| name.ends_with(".dag.json"))
-            .unwrap_or(false)
-        {
-            docs.elf_text
-                .push_str("\n  NOTE  Legacy net-only sidecar; CFG/THREADS need the parser bundle.");
-        }
-    }
-
-    if artifacts.cfg.is_null() {
-        docs.cfg_text = format!("{}\n\n{}", docs.cfg_text, pretty(&artifacts.cfg, 40));
-    }
-    docs
+    Ok(ElfWorkflow {
+        elf_path: elf.to_path_buf(),
+        file_size: fs::metadata(elf).map(|metadata| metadata.len()).unwrap_or(0),
+        artifacts_dir: directory,
+        elf_view,
+        cfg_text,
+        cfg_svg: rendered.unwrap_or_default(),
+        cfg_graph: graph,
+        functions: stats.functions,
+        blocks: stats.blocks,
+        calls: stats.calls,
+        diagnostics: stats.diagnostics,
+        artifacts,
+        warnings,
+    })
 }

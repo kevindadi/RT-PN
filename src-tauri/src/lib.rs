@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
-use crate::binary::BinaryArtifacts;
+use crate::binary::ElfWorkflow;
 use crate::graph::Graph;
 use crate::model::AnalysisResult;
 use crate::workbench::WorkbenchDocs;
@@ -23,12 +23,9 @@ struct AnalysisPayload {
     state_graph: Option<Graph>,
 }
 
-#[derive(Serialize)]
-struct BinaryPayload {
-    docs: binary::BinaryDocs,
-    elf_path: String,
-    bundle_path: Option<String>,
-    file_size: u64,
+#[tauri::command]
+fn resolve_elf2tdg_path() -> Option<String> {
+    binary::resolve_elf2tdg().map(|path| path.display().to_string())
 }
 
 #[tauri::command]
@@ -78,19 +75,16 @@ async fn analyze_model(path: String) -> Result<AnalysisPayload, String> {
 }
 
 #[tauri::command]
-fn load_binary(path: String) -> Result<BinaryPayload, String> {
-    let elf = PathBuf::from(&path);
-    if !elf.is_file() {
-        return Err(format!("ELF not found: {}", elf.display()));
-    }
-    let artifacts = BinaryArtifacts::load(&elf);
-    let docs = binary::render(&artifacts);
-    Ok(BinaryPayload {
-        docs,
-        elf_path: artifacts.elf_path.display().to_string(),
-        bundle_path: artifacts.bundle_path.map(|p| p.display().to_string()),
-        file_size: artifacts.file_size,
+async fn analyze_elf(path: String) -> Result<ElfWorkflow, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let elf = PathBuf::from(&path);
+        if !elf.is_file() {
+            return Err(format!("ELF not found: {}", elf.display()));
+        }
+        binary::analyze(&elf)
     })
+    .await
+    .map_err(|error| format!("ELF worker failed: {error}"))?
 }
 
 fn webview_data_directory(app: &tauri::AppHandle) -> PathBuf {
@@ -132,8 +126,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             analyze_model,
-            load_binary,
+            analyze_elf,
             resolve_cli_path,
+            resolve_elf2tdg_path,
             startup_paths
         ])
         .run(tauri::generate_context!())

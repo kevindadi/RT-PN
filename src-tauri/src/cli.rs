@@ -36,7 +36,7 @@ fn writable_directory(path: PathBuf) -> Option<PathBuf> {
     Some(path)
 }
 
-fn artifact_directory() -> Result<PathBuf, String> {
+pub(crate) fn artifact_directory() -> Result<PathBuf, String> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(path) = std::env::var("PTPN_ARTIFACT_DIR") {
         candidates.push(PathBuf::from(path));

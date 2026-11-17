@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { bin, detectToolchain, ensureDir, exists, log, paths, run } from "./lib.mjs";
+import { bin, detectToolchain, ensureDir, exists, log, paths, run, which } from "./lib.mjs";
 
 const toolchain = detectToolchain({ required: true });
 const suffix = bin("");
@@ -53,7 +53,41 @@ try {
   if (typeof tdg !== "object" || tdg === null) throw new Error("elf2tdg did not emit a JSON object");
   log(`elf2tdg TDG JSON fields: ${Object.keys(tdg).slice(0, 8).join(", ")}`);
 
-  // ---- 2. TDG -> PTPN + state-space analysis ------------------------------
+  // ---- 2. ELF layout + CFG views (workbench ELF workflow) -----------------
+  const elfView = path.join(paths.e2e, "rust.elf.mmd");
+  run(elf2tdg, [elfFixture, "--view", "elf", "--output", elfView]);
+  requireFile(elfView);
+  if (!fs.readFileSync(elfView, "utf8").includes("flowchart")) {
+    throw new Error("elf2tdg ELF view did not emit a Mermaid layout");
+  }
+
+  const cfgJson = path.join(paths.e2e, "rust.cfg.json");
+  run(elf2tdg, [
+    elfFixture,
+    "--view", "cfg",
+    "--format", "json",
+    "--no-cfg-instructions",
+    "--output", cfgJson,
+  ]);
+  const cfg = JSON.parse(fs.readFileSync(cfgJson, "utf8"));
+  if (!Array.isArray(cfg.functions) || cfg.functions.length === 0) {
+    throw new Error("elf2tdg CFG view did not emit functions");
+  }
+
+  const cfgDot = path.join(paths.e2e, "rust.cfg.dot");
+  run(elf2tdg, [elfFixture, "--view", "cfg", "--format", "dot", "--output", cfgDot]);
+  const dot = which("dot") ?? which("dot.exe");
+  if (dot) {
+    const cfgSvg = path.join(paths.e2e, "rust.cfg.svg");
+    run(dot, ["-Tsvg", cfgDot, "-o", cfgSvg]);
+    requireFile(cfgSvg);
+    log(`CFG preview image: ${cfgSvg} (${fs.statSync(cfgSvg).size} bytes)`);
+  } else {
+    log("Graphviz not found; CFG preview image check skipped");
+  }
+  log(`elf2tdg CFG: schema ${cfg.cfg_schema_version}, ${cfg.functions.length} functions`);
+
+  // ---- 3. TDG -> PTPN + state-space analysis ------------------------------
   const ptpnDot = path.join(paths.e2e, "hw.ptpn.dot");
   const scgDot = path.join(paths.e2e, "hw.scg.dot");
   const metricsJson = path.join(paths.e2e, "hw.metrics.json");
