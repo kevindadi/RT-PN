@@ -29,6 +29,16 @@ function presetForArch(arch: string): { label: string; cpu: string; freq: string
   return match ? match[1] : null;
 }
 
+function friendlyCaveat(caveat: string): string {
+  if (caveat.includes("No instruction timing model is available")) {
+    return (
+      "Timing model not selected: choose a CPU and board profile in RUN CONFIGURATION, " +
+      "then press RUN ANALYSIS. (elf2tdg milestone-M0 fallback when no model is resolved)"
+    );
+  }
+  return caveat;
+}
+
 export function BinaryOverview({
   binary,
   onApplyPreset,
@@ -148,13 +158,12 @@ export function BinaryOverview({
               {arch || "unknown"} → preset {preset.label} · {preset.cpu} @ {preset.freq}
             </b>
             <span className="faint">
-              Applying the preset sets the CPU timing model and default frequency; you can
-              edit both in ANALYSIS PROFILE before running, and override instruction
-              costs with a board profile.
+              Applying the preset sets the CPU timing model and default frequency; press
+              RUN ANALYSIS in the toolbar to rebuild, or edit both in RUN CONFIGURATION.
             </span>
           </div>
           <button className="btn small accent" onClick={() => onApplyPreset(preset.cpu, preset.freq)}>
-            APPLY PRESET &amp; RUN
+            APPLY PRESET
           </button>
         </section>
       )}
@@ -164,7 +173,7 @@ export function BinaryOverview({
           <div className="sem-eyebrow">ANALYSIS CAVEATS</div>
           <ul>
             {binary.caveats.map((caveat) => (
-              <li key={caveat}>{caveat}</li>
+              <li key={caveat}>{friendlyCaveat(caveat)}</li>
             ))}
           </ul>
         </section>

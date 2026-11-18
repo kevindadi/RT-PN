@@ -2815,6 +2815,12 @@ textarea {
   gap: 4px;
 }
 
+.bin-function-list {
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .bin-nav-row {
   display: flex;
   align-items: baseline;

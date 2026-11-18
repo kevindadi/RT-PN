@@ -48,7 +48,7 @@ import {
 import { BinaryAnalysisView } from "./BinaryAnalysis";
 import { BinaryCfg } from "./BinaryCfg";
 import { BinaryCompare } from "./BinaryCompare";
-import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
+import { BinaryOverview } from "./BinaryStages";
 import { WorkflowGuide } from "./Guide";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
@@ -505,7 +505,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
 
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
-    ? ["overview", "elf", "functions", "cfg", "analysis"]
+    ? ["overview", "elf", "cfg", "analysis"]
     : ["dag", "ptpn", "semantics", "state", "replay", "timeline", "report"];
 }
 
@@ -644,6 +644,7 @@ export default function App() {
   const [cfgLoading, setCfgLoading] = useState(false);
   const [cfgError, setCfgError] = useState<string | null>(null);
   const [wcetPath, setWcetPath] = useState<string[] | null>(null);
+  const [binaryFunctionQuery, setBinaryFunctionQuery] = useState("");
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -1502,8 +1503,7 @@ export default function App() {
           onBinaryExample={() => void openElfExample()}
         />
         <footer className="chooser-foot">
-          RT-PN 0.1.5 · Two independent workspaces · scheduling analysis and binary
-          analysis never share stages or configuration.
+          RT-PN 0.2.0 · Phase A information architecture · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1642,25 +1642,48 @@ export default function App() {
           {isBinary && (
             <>
               <div className="divider" />
-              <Section title="ANALYSIS" />
-              <div className="stack">
-                {(
-                  [
-                    ["overview", "OVERVIEW"],
-                    ["elf", "ELF LAYOUT"],
-                    ["functions", "FUNCTIONS"],
-                    ["cfg", "CFG"],
-                    ["analysis", "ANALYSIS RESULTS"],
-                  ] as Array<[Stage, string]>
-                ).map(([stage, label]) => (
-                  <button
-                    key={stage}
-                    className={`btn wide ${activeStage === stage ? "accent" : ""}`}
-                    onClick={() => setActiveStage(stage)}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <Section title="FUNCTION INDEX" />
+              <input
+                className="profile-input"
+                type="text"
+                placeholder="filter functions…"
+                value={binaryFunctionQuery}
+                onChange={(event) => setBinaryFunctionQuery(event.target.value)}
+              />
+              <div className="bin-nav bin-function-list">
+                {(binary?.function_rows ?? [])
+                  .filter((row) => {
+                    const query = binaryFunctionQuery.trim().toLowerCase();
+                    if (!query) return true;
+                    return [row.name, row.demangled_name, row.address]
+                      .some((value) => (value ?? "").toLowerCase().includes(query));
+                  })
+                  .slice(0, 80)
+                  .map((row, index) => {
+                    const selector = functionSelector(row);
+                    if (!selector) return null;
+                    return (
+                      <button
+                        key={`fn-${row.id ?? index}-${selector}`}
+                        className="bin-nav-row"
+                        title={row.address ?? ""}
+                        onClick={() => {
+                          setActiveStage("cfg");
+                          setFunctionCfg(null);
+                          setCfgSelector(null);
+                          void loadFunctionCfg(selector);
+                        }}
+                      >
+                        <span>{row.name || row.address || selector}</span>
+                        <small>{row.kind ?? "fn"} · {row.blocks}b</small>
+                      </button>
+                    );
+                  })}
+                {!binary && (
+                  <div className="faint">
+                    import an ELF to browse functions; the function index opens CFG documents.
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1668,7 +1691,7 @@ export default function App() {
           {isBinary && (
             <>
               <div className="divider" />
-              <Section title="ANALYSIS PROFILE" />
+              <Section title="RUN CONFIGURATION" />
               <select
                 className="policy-select"
                 value={binaryOptions.cpu ?? ""}
@@ -1720,18 +1743,11 @@ export default function App() {
                   }))
                 }
               />
-              <div className="stack">
-                <button
-                  className="btn wide accent"
-                  disabled={!currentPath || busy}
-                  onClick={() => currentPath && void runBinary(currentPath, false)}
-                >
-                  <Play size={13} /> {busy ? "ANALYZING" : "RUN WITH PROFILE"}
-                </button>
-              </div>
               <div className="faint">
-                CPU and board profile select the timing model (caches, branch predictor,
-                memory wait states, WCET). Changes apply on the next run.
+                This configuration applies to the next run. Use <b>RUN ANALYSIS</b> in the
+                toolbar to execute; the function index on the left opens CFG documents.
+                CPU/board profile select the timing model (caches, branch predictor,
+                memory wait states, WCET).
               </div>
             </>
           )}
@@ -2192,9 +2208,13 @@ export default function App() {
                 <BinaryOverview
                   binary={binary}
                   onApplyPreset={(cpu, freq) => {
-                    const next = { ...binaryOptions, cpu, freq };
-                    setBinaryOptions(next);
-                    if (currentPath) void runBinary(currentPath, false, next);
+                    setBinaryOptions((previous) => ({ ...previous, cpu, freq }));
+                    setDetail({
+                      title: "PRESET APPLIED",
+                      body:
+                        `CPU ${cpu} · ${freq}\n\n` +
+                        "Press RUN ANALYSIS in the toolbar to rebuild the analysis with this configuration.",
+                    });
                   }}
                 />
               ) : activeStage === "elf" && isBinary && binary ? (
@@ -2207,24 +2227,6 @@ export default function App() {
                       : binary.elf_view
                   }
                   stageKey="binary-elf"
-                />
-              ) : activeStage === "functions" && isBinary && binary ? (
-                <BinaryFunctions
-                  binary={binary}
-                  onSelect={(row) => {
-                    setActiveStage("cfg");
-                    setFunctionCfg(null);
-                    setCfgSelector(null);
-                    const selector = functionSelector(row);
-                    if (selector) void loadFunctionCfg(selector);
-                    setDetail({
-                      title: "SELECTED FUNCTION",
-                      body:
-                        `${row.name ?? "—"}\n` +
-                        `${row.address ?? "—"} · ${row.kind ?? "?"} · ${row.size ?? "?"} bytes\n` +
-                        `${row.blocks} blocks · ${row.calls} calls · max ${row.cycles_max ?? "?"} cycles`,
-                    });
-                  }}
                 />
               ) : activeStage === "cfg" && isBinary && binary ? (
                 <BinaryCfg
