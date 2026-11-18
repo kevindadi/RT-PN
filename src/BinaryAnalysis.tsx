@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import { writeTextFile } from "./api";
 import { InstructionTiming } from "./InstructionTiming";
@@ -99,6 +99,16 @@ export function BinaryAnalysisView({
   const [tab, setTab] = useState<
     "summary" | "wcet" | "cache" | "memory" | "branch" | "timing"
   >("summary");
+
+  const importProfileFile = async () => {
+    const path = await open({
+      multiple: false,
+      filters: [{ name: "Board profile", extensions: ["toml"] }],
+    });
+    if (typeof path === "string" && path) {
+      onOptionsChange({ ...options, board_profile: path });
+    }
+  };
 
   const reproduceCommand = [
     "elf2tdg",
@@ -270,6 +280,13 @@ export function BinaryAnalysisView({
               }}
             >
               <option value="">none (built-in CPU table only)</option>
+              {options.board_profile &&
+                !profiles.some((profile) => profile.path === options.board_profile) && (
+                  <option value={options.board_profile}>
+                    {(options.board_profile.split(/[\\/]/).pop() ?? "custom profile") +
+                      " (custom file)"}
+                  </option>
+                )}
               {profiles.map((profile) => (
                 <option key={profile.path} value={profile.path}>
                   {profile.name}
@@ -277,6 +294,9 @@ export function BinaryAnalysisView({
                 </option>
               ))}
             </select>
+            <button className="btn small" disabled={busy} onClick={() => void importProfileFile()}>
+              OPEN PROFILE FILE…
+            </button>
           </label>
           <label>
             <span>3 · FREQUENCY</span>
@@ -289,6 +309,16 @@ export function BinaryAnalysisView({
               }
             />
           </label>
+        </div>
+        <div className="action-row" style={{ marginBottom: 8 }}>
+          <button className="btn small" onClick={() => setTab("timing")}>
+            EDIT INSTRUCTION TIMING &amp; PROFILE
+          </button>
+          <span className="faint">
+            CPU selects the built-in instruction timing table. A board profile is an
+            optional TOML file with caches/branch/memory/WCET settings; choose one above,
+            open your own file, or edit the selected one in the TIMING &amp; PROFILE tab.
+          </span>
         </div>
         {configDirty && (
           <div className="faint" style={{ color: "#f2c14e" }}>
@@ -359,7 +389,7 @@ export function BinaryAnalysisView({
             ["cache", "CACHES"],
             ["memory", "DATA MEMORY"],
             ["branch", "BRANCHES"],
-            ["timing", "TIMING MODEL"],
+            ["timing", "TIMING & PROFILE"],
           ] as const
         ).map(([value, label]) => (
           <button

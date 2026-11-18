@@ -1741,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.4.2 · analysis setup fixed · Two independent workspaces.
+          RT-PN 0.4.3 · timing & profile in ANALYSIS · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1929,7 +1929,12 @@ export default function App() {
           {isBinary && (
             <>
               <div className="divider" />
-              <Section title="RUN CONFIGURATION" />
+              <Section title="SAVED RUN CONFIGURATIONS" />
+              <div className="faint">
+                Analysis timing/board setup lives in the ANALYSIS document (ANALYSIS
+                SETUP). Saved configurations here only stage the same CPU / profile /
+                frequency values for the next run.
+              </div>
               <select
                 className="policy-select"
                 value={binaryOptions.cpu ?? ""}
@@ -2880,6 +2885,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

@@ -31,9 +31,10 @@ export function WorkflowGuide({
                 with SAMPLE / ELF EXAMPLE.
               </li>
               <li>
-                Open <b>ANALYSIS PROFILE</b> in the sidebar and confirm the detected
-                architecture preset (CPU model + frequency); add a board profile
-                for caches/branch/WCET, then RUN WITH PROFILE.
+                Open <b>ANALYSIS</b>. The <b>ANALYSIS SETUP</b> panel at the top is the
+                single configuration place: CPU timing model, optional board-profile TOML
+                (select, open your own file, or edit in TIMING &amp; PROFILE) and
+                frequency. Press <b>RUN ANALYSIS</b> there or in the toolbar.
               </li>
               <li>
                 Read <b>OVERVIEW</b> (image, timing model, hot functions) and{" "}
