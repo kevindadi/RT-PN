@@ -573,11 +573,14 @@ fn example_base() -> Result<String, String> {
     }
     for candidate in candidates {
         if is_examples_dir(&candidate) {
-            return Ok(candidate
-                .canonicalize()
-                .unwrap_or(candidate)
-                .display()
-                .to_string());
+            let resolved = candidate.canonicalize().unwrap_or(candidate);
+            let mut text = resolved.display().to_string();
+            if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+                text = format!(r"\\{rest}");
+            } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+                text = rest.to_string();
+            }
+            return Ok(text);
         }
     }
     Err(

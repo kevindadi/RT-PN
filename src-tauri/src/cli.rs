@@ -105,8 +105,13 @@ pub fn run_analysis(
     mut on_line: impl FnMut(&str),
 ) -> AnalysisResult {
     let started = Instant::now();
+    // Windows verbatim paths (`\\?\C:\...`) reject forward slashes and confuse
+    // the CLI's file loading; normalize them before invoking the analyzer.
+    let path_text = path.display().to_string();
+    let normalized = path_text.strip_prefix(r"\\?\").unwrap_or(&path_text).to_string();
+    let path = Path::new(&normalized);
     let mut result = AnalysisResult {
-        path: path.display().to_string(),
+        path: normalized.clone(),
         ..Default::default()
     };
     let stamp = std::time::SystemTime::now()
@@ -307,7 +312,20 @@ pub fn run_analysis(
     }
 
     if !result.net.valid {
-        result.error = "the analyzer produced no PTPN structure".to_string();
+        let tail = result
+            .logs
+            .iter()
+            .rev()
+            .take(3)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        result.error = if tail.is_empty() {
+            "the analyzer produced no PTPN structure".to_string()
+        } else {
+            format!("the analyzer produced no PTPN structure\n\n{tail}")
+        };
         result.ok = false;
         return result;
     }
