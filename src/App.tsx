@@ -1082,9 +1082,11 @@ export default function App() {
       setCfgSelector(null);
       setCfgError(null);
       setWcetPath(null);
+      setBinary(null);
       try {
         const payload = await analyzeElf(path, overrideOptions ?? binaryOptions);
         setBinary(payload);
+        setCurrentPath(path);
         setBusy(false);
         setActiveStage("overview");
         setStatus({ text: "ELF READY", tone: "violet" });
@@ -1343,9 +1345,17 @@ export default function App() {
   const openElfExample = useCallback(async () => {
     try {
       const base = await exampleBase();
+      const profile = `${base}/elf2tdg/profiles/cortex-m4-pipeline.toml`;
+      const options: BinaryOptions = {
+        cpu: "cortex-m4",
+        freq: "168MHz",
+        board_profile: profile,
+      };
+      setBinaryOptions(options);
       await runBinary(
         `${base}/elf2tdg/rust-concurrency/artifacts/rust-concurrency-analysis.elf`,
         true,
+        options,
       );
     } catch (reason) {
       setError(String(reason));
@@ -1492,8 +1502,8 @@ export default function App() {
           onBinaryExample={() => void openElfExample()}
         />
         <footer className="chooser-foot">
-          Two independent workspaces · scheduling analysis and binary analysis never share
-          stages or configuration.
+          RT-PN 0.1.5 · Two independent workspaces · scheduling analysis and binary
+          analysis never share stages or configuration.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1628,6 +1638,32 @@ export default function App() {
               </>
             )}
           </div>
+
+          {isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="ANALYSIS" />
+              <div className="stack">
+                {(
+                  [
+                    ["overview", "OVERVIEW"],
+                    ["elf", "ELF LAYOUT"],
+                    ["functions", "FUNCTIONS"],
+                    ["cfg", "CFG"],
+                    ["analysis", "ANALYSIS RESULTS"],
+                  ] as Array<[Stage, string]>
+                ).map(([stage, label]) => (
+                  <button
+                    key={stage}
+                    className={`btn wide ${activeStage === stage ? "accent" : ""}`}
+                    onClick={() => setActiveStage(stage)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {isBinary && (
             <>

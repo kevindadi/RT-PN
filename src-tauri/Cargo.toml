@@ -1,6 +1,6 @@
 [package]
 name = "rt-pn"
-version = "0.1.4"
+version = "0.1.5"
 description = "RT-PN native workbench"
 authors = ["kevindadi"]
 edition = "2021"
