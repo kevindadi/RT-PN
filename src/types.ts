@@ -45,9 +45,18 @@ export interface PetriNet {
   initial_marking: number[];
 }
 
+export interface StateNode {
+  id: string;
+  index: number;
+  marking: string;
+  active: string;
+  suspended: string;
+  elapsed: string;
+}
+
 export interface StateGraph {
   valid: boolean;
-  nodes: Array<{ id: string; index: number }>;
+  nodes: StateNode[];
   edges: Array<{ from: number; to: number; label: string }>;
 }
 
@@ -177,6 +186,7 @@ export type Stage =
   | "ptpn"
   | "semantics"
   | "state"
+  | "replay"
   | "timeline"
   | "report"
   | "elf"

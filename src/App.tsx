@@ -44,6 +44,7 @@ import {
 } from "./api";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
+import { ScgReplay } from "./Replay";
 import { SCHEDULING_POLICIES, SemanticsStage, policyById } from "./Semantics";
 import type {
   AllocationReport,
@@ -88,6 +89,12 @@ const STAGES: Record<
     title: "STATE-CLASS SPACE",
     subtitle: "Reachability classes and transitions as text",
     previewable: true,
+  },
+  replay: {
+    label: "REPLAY",
+    title: "STATE-CLASS REPLAY",
+    subtitle: "Step through a real transition path: marking, E_pri and clocks",
+    previewable: false,
   },
   timeline: {
     label: "TIMELINE",
@@ -466,7 +473,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
     ? ["elf", "cfg"]
-    : ["dag", "ptpn", "semantics", "state", "timeline", "report"];
+    : ["dag", "ptpn", "semantics", "state", "replay", "timeline", "report"];
 }
 
 function stageDoc(stage: Stage, docs: WorkbenchDocs | undefined): string {
@@ -1460,6 +1467,9 @@ export default function App() {
                   <button className="btn wide bad" onClick={openDeadlockPreview}>
                     <Eye size={13} /> TRACE PREVIEW
                   </button>
+                  <button className="btn wide" onClick={() => setActiveStage("replay")}>
+                    <Play size={13} /> REPLAY TRACE
+                  </button>
                 </>
               ) : (
                 <div className="faint">
@@ -1668,6 +1678,8 @@ export default function App() {
                   canSweep={Boolean(currentPath) && !isBinary}
                   onRunSweep={() => void runSweep()}
                 />
+              ) : activeStage === "replay" && !isBinary && analysis ? (
+                <ScgReplay scg={analysis.result.scg} trace={analysis.deadlock_trace} />
               ) : doc ? (
                 <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
               ) : (

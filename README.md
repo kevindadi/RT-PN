@@ -151,6 +151,15 @@ The new `SEMANTICS` stage documents the selected policy formally:
 - `ptpn describe` output for the loaded model (`DESCRIBE MODEL`), i.e. the
   analyser's own restatement of effective priorities, cores and lock nesting.
 
+### State-class replay
+
+The `REPLAY` stage steps through a real transition path of the explored
+state-class graph: the deadlock counterexample path when one exists, otherwise
+the shortest path to a state class chosen from the dropdown. Play/pause,
+step-forward/back, reset, speed and a clickable state timeline are available.
+Each step shows the marking (place tokens), the selected active set `E_pri`,
+suspended transitions, the fired transition and the elapsed time.
+
 The EDF/FIFO/LLF notes reflect the engine's documented constraints (statically
 partitioned multi-core, no locks, deterministic segments for event-driven LLF).
 

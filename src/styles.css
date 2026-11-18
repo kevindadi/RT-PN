@@ -1592,6 +1592,271 @@ button {
   color: #ff7b7b;
 }
 
+/* ---------- SCG replay ---------- */
+
+.replay {
+  height: 100%;
+  overflow: auto;
+  padding: 26px 30px 40px;
+  background:
+    radial-gradient(1000px 480px at 15% -10%, rgba(79, 163, 255, 0.08), transparent 60%),
+    radial-gradient(800px 400px at 100% 10%, rgba(150, 120, 255, 0.06), transparent 55%);
+}
+
+.replay-hero {
+  max-width: 980px;
+  margin: 0 auto 14px;
+  animation: sem-rise 420ms ease-out both;
+}
+
+.replay-empty {
+  padding: 40px;
+  color: #8fa8c0;
+}
+
+.replay-controls {
+  max-width: 980px;
+  margin: 0 auto 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #17304d;
+  border-radius: 8px;
+  background: rgba(8, 17, 31, 0.92);
+}
+
+.replay-range {
+  flex: 1 1 180px;
+  min-width: 120px;
+  accent-color: #4fa3ff;
+}
+
+.replay-counter {
+  color: #b9d3ec;
+  font-size: 11px;
+  min-width: 64px;
+  text-align: center;
+}
+
+.replay-select {
+  padding: 4px 8px;
+  background: #0b1422;
+  color: #dce8f5;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-family: inherit;
+  max-width: 260px;
+}
+
+.replay-stage {
+  max-width: 980px;
+  margin: 0 auto 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.replay-panel {
+  padding: 14px 16px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(13, 26, 44, 0.95), rgba(9, 18, 32, 0.95));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+}
+
+.replay-panel h3 {
+  margin: 0 0 10px;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: #7fb2e8;
+}
+
+.replay-unit h3 {
+  margin: 0;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: #7fb2e8;
+}
+
+.replay-marking {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.replay-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid #244a73;
+  border-radius: 6px;
+  background: #0b1728;
+  animation: sem-rise 220ms ease-out both;
+}
+
+.replay-place.added {
+  border-color: #4fa3ff;
+  box-shadow: 0 0 12px rgba(79, 163, 255, 0.3);
+  animation: replay-added 700ms ease-out;
+}
+
+.replay-place-name {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9.5px;
+  color: #9fc0de;
+}
+
+.replay-tokens {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.replay-token {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #d8efff, #4fa3ff 60%, #1f6feb);
+  box-shadow: 0 0 8px rgba(79, 163, 255, 0.7);
+  animation: sem-token-pop 300ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.replay-tokens em {
+  font-style: normal;
+  font-size: 9px;
+  color: #7fb2e8;
+}
+
+.replay-count {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9px;
+  color: #566f8a;
+}
+
+.replay-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.replay-chip {
+  padding: 4px 8px;
+  border: 1px solid #244a73;
+  border-radius: 4px;
+  background: rgba(79, 163, 255, 0.06);
+  color: #b9d3ec;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9.5px;
+  line-height: 1.45;
+  animation: sem-rise 260ms ease-out both;
+}
+
+.replay-chip.suspended {
+  border-color: #4a3f8f;
+  color: #c9c2ff;
+  background: rgba(143, 123, 255, 0.08);
+}
+
+.replay-subhead {
+  margin-top: 12px !important;
+}
+
+.replay-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #17304d;
+}
+
+.replay-meta .math {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: #cfe6ff;
+  word-break: break-word;
+}
+
+.replay-timeline {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+}
+
+.replay-step {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid #1d3350;
+  border-radius: 6px;
+  background: #0a1526;
+  color: #7c8ca8;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9px;
+  cursor: pointer;
+  transition: border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+}
+
+.replay-step small {
+  font-size: 8px;
+  color: #566f8a;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replay-step.past {
+  color: #9cc0e2;
+  border-color: #244a73;
+}
+
+.replay-step.active {
+  color: #eaf5ff;
+  border-color: #4fa3ff;
+  box-shadow: 0 0 14px rgba(79, 163, 255, 0.35);
+}
+
+.replay-step.active small {
+  color: #9fd0ff;
+}
+
+@keyframes replay-added {
+  from {
+    box-shadow: 0 0 0 rgba(79, 163, 255, 0);
+  }
+  40% {
+    box-shadow: 0 0 20px rgba(79, 163, 255, 0.65);
+  }
+  to {
+    box-shadow: 0 0 12px rgba(79, 163, 255, 0.3);
+  }
+}
+
+@media (max-width: 1280px) {
+  .replay-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .replay-meta {
+    grid-template-columns: 1fr;
+  }
+}
+
 
 
 
