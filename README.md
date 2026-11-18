@@ -177,6 +177,25 @@ Other recipes: `just test` (engine tests + desktop backend tests + typecheck +
 e2e), `just engines` (engine builds only), `just update-engines` (bump the
 submodule pins), and `just clean`.
 
+### VS Code / CMake Tools (engine-only debugging)
+
+`just` remains the unified build entry, but the analyzer engine can also be
+configured directly from VS Code's CMake Tools. Run once:
+
+```bash
+node scripts/vscode-cmake-setup.mjs   # or: just vscode-setup
+```
+
+This writes a local `engines/prioritized-tpn/CMakeUserPresets.json` (MinGW +
+Ninja + vcpkg `x64-mingw-dynamic`, build tree `cmake-build-vscode`) and points
+`.vscode/settings.json` at the `vscode-windows-debug` preset. Both files are
+machine-local; the release pipeline (`just engines`/`just build`) keeps using
+the MSVC `x64-windows-static` tree under `build/ptpn` and is unaffected.
+
+To reconfigure, delete `engines/prioritized-tpn/cmake-build-vscode` and run
+the task again; the toolchain paths come from `.env.local`/auto-detection, the
+same as `just doctor`.
+
 ## Keyboard
 
 - `Ctrl+F` / `Cmd+F` — search within the active text stage

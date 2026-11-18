@@ -19,6 +19,11 @@ default:
 doctor:
     node scripts/env.mjs --check
 
+# Write local VS Code CMake Tools presets for engine-only debugging (MinGW).
+# Machine-local files only; the unified `just` build is not affected.
+vscode-setup:
+    node scripts/vscode-cmake-setup.mjs
+
 # Initialize the engine submodules and report the toolchain.
 setup:
     node scripts/git-engines.mjs init
