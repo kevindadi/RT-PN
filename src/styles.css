@@ -2589,6 +2589,162 @@ textarea {
   color: #efeaff;
 }
 
+/* ---------- compact analysis sidebar ---------- */
+
+.side-summary {
+  margin: 12px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(16, 32, 54, 0.95), rgba(9, 18, 32, 0.95));
+}
+
+.side-verdict {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  margin-bottom: 8px;
+}
+
+.side-verdict.good,
+.side-verdict.accent {
+  color: #67e8a2;
+}
+
+.side-verdict.warn {
+  color: #f2c14e;
+}
+
+.side-verdict.bad {
+  color: #ff7b7b;
+}
+
+.side-verdict.violet {
+  color: #c0adff;
+}
+
+.side-verdict.muted {
+  color: #8fa8c0;
+}
+
+.side-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+.side-stats span {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.side-stats b {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #dcecff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-stats small {
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #6f8299;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.budget-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.budget-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.budget-field span {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: #6f8299;
+}
+
+.budget-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 5px;
+  border: 1px solid #1d3350;
+  border-radius: 3px;
+  background: #0b1422;
+  color: #dce8f5;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.fold {
+  border-top: 1px solid #14283f;
+  margin-top: 10px;
+  padding-top: 8px;
+}
+
+.fold > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #7fb2e8;
+  user-select: none;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary::before {
+  content: "▸";
+  color: #4f7396;
+  font-size: 9px;
+  transition: transform 140ms ease;
+}
+
+.fold[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.fold[open] > summary {
+  margin-bottom: 8px;
+}
+
+.fold .btn.wide {
+  margin-top: 6px;
+}
+
+.fold .assumptions {
+  margin-top: 6px;
+}
+
 
 
 

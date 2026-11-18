@@ -1388,16 +1388,6 @@ export default function App() {
                 : "Choose a workflow to begin"}
           </div>
           <div className="stack">
-            {isBinary && (
-              <button className="btn wide" onClick={() => void openBinaryDialog()}>
-                <Upload size={13} /> IMPORT ELF
-              </button>
-            )}
-            {!isBinary && (
-              <button className="btn wide" onClick={() => void openSpecDialog()}>
-                <FolderOpen size={13} /> OPEN MODEL
-              </button>
-            )}
             <button
               className="btn wide"
               onClick={() => {
@@ -1427,35 +1417,36 @@ export default function App() {
           </div>
 
           <div className="divider" />
-          <Section title="MODEL SOURCE" />
+          <Section title="MODEL" />
           <div className="source-name">{displayName}</div>
           <div className="source-path" title={displayPath ?? undefined}>
             {displayPath ?? "No model loaded"}
           </div>
           <div className="stack">
-            {!isBinary && (
+            {!isBinary ? (
               <>
-                <button className="btn wide" onClick={() => void openSpecDialog()}>
+                <button className="btn wide primary" onClick={() => void openSpecDialog()}>
                   <FolderOpen size={13} /> OPEN MODEL
                 </button>
-                <button className="btn wide" onClick={() => void openExample()}>
-                  <Braces size={13} /> EXAMPLES
-                </button>
-                <button
-                  className="btn wide"
-                  disabled={!currentPath}
-                  onClick={() => void saveProject()}
-                >
-                  <Copy size={13} /> SAVE PROJECT
-                </button>
-                <button className="btn wide" onClick={() => void openProject()}>
-                  <FolderOpen size={13} /> OPEN PROJECT
-                </button>
+                <div className="action-row">
+                  <button className="btn small" onClick={() => void openExample()}>
+                    <Braces size={13} /> EXAMPLES
+                  </button>
+                  <button
+                    className="btn small"
+                    disabled={!currentPath}
+                    onClick={() => void saveProject()}
+                  >
+                    <Copy size={12} /> SAVE
+                  </button>
+                  <button className="btn small" onClick={() => void openProject()}>
+                    <FolderOpen size={12} /> OPEN
+                  </button>
+                </div>
               </>
-            )}
-            {isBinary && (
+            ) : (
               <>
-                <button className="btn wide" onClick={() => void openBinaryDialog()}>
+                <button className="btn wide violet" onClick={() => void openBinaryDialog()}>
                   <Upload size={13} /> IMPORT ELF
                 </button>
                 <button className="btn wide" onClick={() => void openElfExample()}>
@@ -1467,8 +1458,34 @@ export default function App() {
 
           {!isBinary && (
             <>
+              <div className="side-summary">
+                <div className={`side-verdict ${verdict.tone}`}>{verdict.text}</div>
+                <div className="side-stats">
+                  <span>
+                    <b>{analysis?.result.ok ? analysis.result.scg.nodes.length : "—"}</b>
+                    <small>states</small>
+                  </span>
+                  <span>
+                    <b>{analysis?.result.ok ? formatNumber(maxWcrt) : "—"}</b>
+                    <small>wcrt</small>
+                  </span>
+                  <span>
+                    <b>{analysis?.result.ok ? deadlockCount : "—"}</b>
+                    <small>deadlocks</small>
+                  </span>
+                  <span>
+                    <b>{policyInfo.id}</b>
+                    <small>policy</small>
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!isBinary && (
+            <>
               <div className="divider" />
-              <Section title="SCHEDULING POLICY" />
+              <Section title="RUN CONTROL" />
               <select
                 className="policy-select"
                 value={policy}
@@ -1499,14 +1516,53 @@ export default function App() {
               <div className="faint">
                 {policyInfo.family} · {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
               </div>
-              <div className="stack">
+              <div className="budget-row">
+                {(
+                  [
+                    ["STATES", "maxStates", 100, 1_000_000, 1_000],
+                    ["TIMEOUT S", "timeoutSecs", 0, 3_600, 30],
+                    ["MEM MB", "maxMemoryMb", 0, 65_536, 256],
+                  ] as const
+                ).map(([label, key, min, max, step]) => (
+                  <label key={key} className="budget-field">
+                    <span>{label}</span>
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={budget[key]}
+                      disabled={busy}
+                      onChange={(event) =>
+                        setBudget((previous) => ({
+                          ...previous,
+                          [key]: Number(event.target.value) || 0,
+                        }))
+                      }
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="action-row">
                 <button
-                  className="btn wide"
+                  className="btn small accent"
+                  disabled={!currentPath || busy}
+                  onClick={() => currentPath && void runSpec(currentPath, false)}
+                >
+                  <Play size={12} /> {busy ? "RUNNING" : "RE-RUN"}
+                </button>
+                <button
+                  className="btn small"
                   disabled={!currentPath || describeBusy}
                   onClick={() => void refreshDescription()}
                 >
-                  <Terminal size={13} /> DESCRIBE MODEL
+                  <Terminal size={12} /> DESCRIBE
                 </button>
+                {busy && workflow === "spec" && (
+                  <button className="btn small bad" onClick={() => void cancelRun()}>
+                    CANCEL {Math.round(liveElapsed / 1000)}s
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -1557,17 +1613,15 @@ export default function App() {
           )}
 
           {!isBinary && analysis?.result.ok && taskMetrics.length > 0 && (
-            <>
-              <div className="divider" />
-              <Section title="WCRT / SLACK" />
+            <details className="fold">
+              <summary>WCRT / SLACK</summary>
               <WcrtChart tasks={taskMetrics} />
-            </>
+            </details>
           )}
 
           {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="CORE ALLOCATION" />
+            <details className="fold">
+              <summary>CORE ALLOCATION</summary>
               <button
                 className="btn wide"
                 disabled={!currentPath || busy || allocateBusy}
@@ -1632,13 +1686,12 @@ export default function App() {
                   searches allowed core assignments (RTSL `core any` or TDG `allowed_cores`)
                 </div>
               )}
-            </>
+            </details>
           )}
 
           {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="COUNTEREXAMPLE" />
+            <details className="fold">
+              <summary>COUNTEREXAMPLE</summary>
               {deadlockSteps && deadlockSteps.length > 0 ? (
                 <>
                   <pre className="assumptions">{deadlockTraceText(deadlockSteps)}</pre>
@@ -1656,13 +1709,12 @@ export default function App() {
                     : "run an analysis to search for deadlocks"}
                 </div>
               )}
-            </>
+            </details>
           )}
 
           {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="PENDING TIMING" />
+            <details className="fold">
+              <summary>PENDING TIMING</summary>
               <button
                 className="btn wide"
                 disabled={!currentPath || busy || fillBusy}
@@ -1713,13 +1765,12 @@ export default function App() {
                   </button>
                 </div>
               )}
-            </>
+            </details>
           )}
 
           {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="RUN HISTORY" />
+            <details className="fold">
+              <summary>RUN HISTORY</summary>
           {history.length === 0 ? (
             <div className="faint">no runs in this session</div>
           ) : (
@@ -1742,44 +1793,7 @@ export default function App() {
           >
             <RefreshCw size={13} /> COMPARE RUNS
           </button>
-
-          <div className="divider" />
-          <Section title="VERDICT" />
-          <div className={`verdict ${verdict.tone}`}>{verdict.text}</div>
-          <div className="verdict-sub">
-            {isBinary
-              ? "elf2tdg artifacts loaded"
-              : analysis?.result.ok
-                ? "text-first analysis"
-                : "waiting for a model"}
-          </div>
-          <div className="stat-grid">
-            <Stat
-              label="STATES"
-              value={analysis?.result.ok ? String(analysis.result.scg.nodes.length) : "—"}
-              tone="accent"
-            />
-            <Stat
-              label="HYPERPERIOD"
-              value={
-                analysis?.result.ok && (metrics.hyperperiod ?? 0) > 0
-                  ? formatNumber(metrics.hyperperiod ?? 0)
-                  : "—"
-              }
-              tone="violet"
-            />
-            <Stat
-              label="MAX WCRT"
-              value={analysis?.result.ok ? formatNumber(maxWcrt) : "—"}
-              tone="bad"
-            />
-            <Stat
-              label="CORES"
-              value={analysis?.result.ok ? String(metrics.cores?.length ?? 0) : "—"}
-              tone="warn"
-            />
-          </div>
-            </>
+            </details>
           )}
 
           <div className="sidebar-bottom">
@@ -1910,66 +1924,6 @@ export default function App() {
           <Section title="DETAILS" />
           <div className="detail-title">{detail.title}</div>
           <div className="detail-body">{detail.body}</div>
-          {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="RESOURCE BUDGET" />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 6,
-              fontSize: 11,
-              alignItems: "center",
-            }}
-          >
-            {(
-              [
-                ["MAX STATES", "maxStates", 100, 1000000, 1000],
-                ["TIMEOUT (S)", "timeoutSecs", 0, 3600, 30],
-                ["MAX MEMORY (MB)", "maxMemoryMb", 0, 65536, 256],
-              ] as const
-            ).map(([label, key, min, max, step]) => (
-              <label key={key} style={{ display: "contents" }}>
-                <span className="faint">{label}</span>
-                <input
-                  type="number"
-                  min={min}
-                  max={max}
-                  step={step}
-                  value={budget[key]}
-                  disabled={busy}
-                  style={{
-                    width: 92,
-                    background: "#0b1422",
-                    color: "#dce8f5",
-                    border: "1px solid #1d3350",
-                    borderRadius: 3,
-                    padding: "2px 6px",
-                    fontFamily: "inherit",
-                  }}
-                  onChange={(event) =>
-                    setBudget((previous) => ({
-                      ...previous,
-                      [key]: Number(event.target.value) || 0,
-                    }))
-                  }
-                />
-              </label>
-            ))}
-          </div>
-          <div className="faint" style={{ marginTop: 6 }}>
-            Petri-net state spaces can explode. The engine stops with partial
-            results (exit 5) when a limit is hit; 0 disables timeout/memory.
-          </div>
-          {busy && workflow === "spec" && (
-            <button className="btn wide bad" onClick={() => void cancelRun()}>
-              CANCEL RUN · {Math.round(liveElapsed / 1000)}s
-            </button>
-          )}
-            </>
-          )}
-
           <div className="divider" />
           <Section title="RUN LOG" />
           <pre className="run-log">
