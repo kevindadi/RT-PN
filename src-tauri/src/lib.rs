@@ -807,6 +807,13 @@ async fn workspace_open_project(id: String) -> Result<serde_json::Value, String>
 }
 
 #[tauri::command]
+async fn workspace_open_run(id: String, run_id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || workspace::open_run(&id, &run_id))
+        .await
+        .map_err(|error| format!("workspace worker failed: {error}"))?
+}
+
+#[tauri::command]
 async fn workspace_delete_project(id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || workspace::delete_project(&id))
         .await
@@ -954,6 +961,7 @@ pub fn run() {
             startup_paths,
             workspace_delete_project,
             workspace_open_project,
+            workspace_open_run,
             workspace_recent,
             workspace_save_project,
             write_text_file

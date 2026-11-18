@@ -157,6 +157,14 @@ export function workspaceOpenProject(id: string): Promise<{
   return invoke("workspace_open_project", { id });
 }
 
+/** Restore one historical run (runs/<id>.json) without re-analysis. */
+export function workspaceOpenRun(id: string, runId: string): Promise<{
+  project: { id: string; elf_path?: string; options?: BinaryOptions };
+  payload: ElfWorkflow;
+}> {
+  return invoke("workspace_open_run", { id, runId });
+}
+
 export function workspaceDeleteProject(id: string): Promise<void> {
   return invoke("workspace_delete_project", { id });
 }

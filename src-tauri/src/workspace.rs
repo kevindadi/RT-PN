@@ -135,6 +135,36 @@ pub fn save_project(
         serde_json::to_vec(payload).map_err(|error| format!("cannot serialize payload: {error}"))?,
     )
     .map_err(|error| format!("cannot write latest.json: {error}"))?;
+    let now = now_seconds();
+    static RUN_SEQUENCE: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(0);
+    let sequence = RUN_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let run_id = format!("{now}-{sequence}");
+    let runs_dir = directory.join("runs");
+    fs::create_dir_all(&runs_dir)
+        .map_err(|error| format!("cannot create {}: {error}", runs_dir.display()))?;
+    let run_document = json!({
+        "created_at": now,
+        "options": options,
+        "payload": payload,
+    });
+    fs::write(
+        runs_dir.join(format!("{run_id}.json")),
+        serde_json::to_vec(&run_document)
+            .map_err(|error| format!("cannot serialize run: {error}"))?,
+    )
+    .map_err(|error| format!("cannot write run history: {error}"))?;
+    if let Ok(entries) = fs::read_dir(&runs_dir) {
+        let mut files: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+            .collect();
+        files.sort();
+        while files.len() > 20 {
+            let _ = fs::remove_file(files.remove(0));
+        }
+    }
     let (profile, functions, model, wcet_root, wcet_cycles, arch) = summary(payload);
     let project = json!({
         "schema_version": 1,
@@ -171,6 +201,7 @@ pub fn save_project(
         0,
         json!({
             "at": now,
+            "run_id": run_id,
             "profile": profile,
             "wcet_root": wcet_root,
             "wcet_cycles": wcet_cycles,
@@ -282,8 +313,40 @@ pub fn open_project(id: &str) -> Result<Value, String> {
     }))
 }
 
-pub fn delete_project(id: &str) -> Result<(), String> {
+pub fn open_run(id: &str, run_id: &str) -> Result<Value, String> {
     let connection = database()?;
+    let (directory, elf_path, options) = connection
+        .query_row(
+            "SELECT dir, elf_path, options FROM projects WHERE id = ?1",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .map_err(|error| format!("project {id} not found: {error}"))?;
+    let path = Path::new(&directory)
+        .join("runs")
+        .join(format!("{run_id}.json"));
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("cannot read run {}: {error}", path.display()))?;
+    let document: Value =
+        serde_json::from_slice(&bytes).map_err(|error| format!("invalid run: {error}"))?;
+    let payload = document.get("payload").cloned().unwrap_or(Value::Null);
+    Ok(json!({
+        "project": {
+            "id": id,
+            "elf_path": elf_path,
+            "options": options.and_then(|value| serde_json::from_str::<Value>(&value).ok()),
+        },
+        "payload": payload,
+    }))
+}
+
+pub fn delete_project(id: &str) -> Result<(), String> {    let connection = database()?;
     let directory: String = connection
         .query_row("SELECT dir FROM projects WHERE id = ?1", [id], |row| row.get(0))
         .map_err(|error| format!("project {id} not found: {error}"))?;

@@ -2961,6 +2961,22 @@ textarea {
   font-size: 8px;
 }
 
+.project-run {
+  padding: 1px 4px;
+  border: 1px solid #1d3350;
+  border-radius: 3px;
+  background: transparent;
+  color: #8fa8c0;
+  font-family: var(--font-mono) !important;
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.project-run:hover {
+  border-color: #8f7bff;
+  color: #d9ccff;
+}
+
 .project-card:hover {
   border-color: #8f7bff;
   transform: translateY(-1px);

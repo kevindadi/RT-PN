@@ -225,6 +225,7 @@ export interface WorkspaceProject {
   run_count?: number;
   last_runs?: Array<{
     at: number;
+    run_id?: string;
     profile?: string;
     wcet_root?: string | null;
     wcet_cycles?: number | null;

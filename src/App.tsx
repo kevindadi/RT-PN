@@ -45,6 +45,7 @@ import {
   readTextFile,
   workspaceDeleteProject,
   workspaceOpenProject,
+  workspaceOpenRun,
   workspaceRecent,
   workspaceSaveProject,
   writeTextFile,
@@ -1360,6 +1361,33 @@ export default function App() {
     if (path) await runBinary(path, true);
   }, [runBinary]);
 
+  const openWorkspaceRun = useCallback(async (id: string, runId: string) => {
+    try {
+      const restored = await workspaceOpenRun(id, runId);
+      setWorkflow("binary");
+      setHub(false);
+      setAnalysis(null);
+      setBinary(restored.payload);
+      setCurrentPath(restored.project.elf_path ?? null);
+      setBinaryOptions((restored.project.options ?? {}) as BinaryOptions);
+      setActiveStage("overview");
+      setFunctionCfg(null);
+      setCfgSelector(null);
+      setCfgError(null);
+      setWcetPath(null);
+      setStatus({ text: "HISTORICAL RUN RESTORED", tone: "violet" });
+      setWindowTitle(fileName(restored.project.elf_path ?? "project"));
+      setDetail({
+        title: "HISTORICAL RUN",
+        body:
+          `run ${runId}\n${restored.project.elf_path ?? ""}\n\n` +
+          "A stored run payload was loaded from the workspace — no re-analysis was run.",
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, []);
+
   const openWorkspaceProject = useCallback(async (id: string) => {
     try {
       const restored = await workspaceOpenProject(id);
@@ -1632,12 +1660,20 @@ export default function App() {
                   {project.last_runs && project.last_runs.length > 0 && (
                     <div className="project-runs mono faint">
                       {project.last_runs.slice(0, 3).map((run, index) => (
-                        <span key={`${run.at}-${index}`}>
+                        <button
+                          key={`${run.at}-${index}`}
+                          className="project-run"
+                          title="open this stored run"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (run.run_id) void openWorkspaceRun(project.id, run.run_id);
+                          }}
+                        >
                           {new Date(run.at * 1000).toLocaleTimeString()} ·{" "}
                           {run.wcet_root
                             ? `${run.wcet_root} ${run.wcet_cycles?.toFixed(0) ?? "?"} cy`
                             : "no WCET"}
-                        </span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -1648,7 +1684,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.3 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.3.4 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2774,6 +2810,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
