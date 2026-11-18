@@ -15,7 +15,7 @@ const num = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 const fmtNumber = (value: unknown, digits = 0): string => {
   const number = num(value);
-  if (number === null) return "—";
+  if (number === null) return "-";
   return digits > 0 ? number.toFixed(digits) : String(Math.round(number));
 };
 
@@ -124,12 +124,12 @@ export function BinaryAnalysisView({
 
   const reportText = () => {
     const lines = [
-      `# Binary analysis — ${binary.elf_path.split(/[\\/]/).pop()}`,
+      `# Binary analysis - ${binary.elf_path.split(/[\\/]/).pop()}`,
       "",
       `- image: ${str(binary.image.path)}`,
-      `- arch: ${str(binary.image.arch)} · entry ${str(binary.image.entry)}`,
+      `- arch: ${str(binary.image.arch)} | entry ${str(binary.image.entry)}`,
       `- cfg schema: ${binary.schema}`,
-      `- functions: ${binary.functions} · blocks: ${binary.blocks} · calls: ${binary.calls}`,
+      `- functions: ${binary.functions} | blocks: ${binary.blocks} | calls: ${binary.calls}`,
       `- timing model: ${str(model.id)} (${str(model.determinism)})`,
       `- board profile: ${profileId}`,
       profileSha ? `- profile sha256: ${profileSha}` : "",
@@ -146,7 +146,7 @@ export function BinaryAnalysisView({
       lines.push(
         "## WCET (CFG longest path)",
         "",
-        `- functions analyzed: ${fmtNumber(wcet.functions_analyzed)} · partial ${fmtNumber(wcet.functions_partial)} · unbounded ${fmtNumber(wcet.functions_unbounded)}`,
+        `- functions analyzed: ${fmtNumber(wcet.functions_analyzed)} | partial ${fmtNumber(wcet.functions_partial)} | unbounded ${fmtNumber(wcet.functions_unbounded)}`,
         "",
         "| root | kind | status | cycles | time (ns) |",
         "| --- | --- | --- | ---: | ---: |",
@@ -161,8 +161,8 @@ export function BinaryAnalysisView({
       lines.push(
         "## Instruction cache",
         "",
-        `- ${fmtNumber(icache.size)} B · ${fmtNumber(icache.line_bytes)} B lines · ${fmtNumber(icache.ways)} ways · miss penalty ${fmtNumber(icache.miss_penalty)} cy`,
-        `- blocks analyzed ${fmtNumber(icache.blocks_analyzed)} · fallback ${fmtNumber(icache.blocks_fallback)}`,
+        `- ${fmtNumber(icache.size)} B | ${fmtNumber(icache.line_bytes)} B lines | ${fmtNumber(icache.ways)} ways | miss penalty ${fmtNumber(icache.miss_penalty)} cy`,
+        `- blocks analyzed ${fmtNumber(icache.blocks_analyzed)} | fallback ${fmtNumber(icache.blocks_fallback)}`,
         "",
       );
     }
@@ -170,8 +170,8 @@ export function BinaryAnalysisView({
       lines.push(
         "## Data cache",
         "",
-        `- accesses ${fmtNumber(dcache.memory_accesses)} · resolved ${fmtNumber(dcache.resolved_memory_accesses)} · lines ${fmtNumber(dcache.line_accesses)}`,
-        `- miss penalty ${fmtNumber(dcache.miss_penalty)} cy · write allocate ${String(dcache.write_allocate)}`,
+        `- accesses ${fmtNumber(dcache.memory_accesses)} | resolved ${fmtNumber(dcache.resolved_memory_accesses)} | lines ${fmtNumber(dcache.line_accesses)}`,
+        `- miss penalty ${fmtNumber(dcache.miss_penalty)} cy | write allocate ${String(dcache.write_allocate)}`,
         "",
       );
     }
@@ -179,7 +179,7 @@ export function BinaryAnalysisView({
       lines.push(
         "## Data memory",
         "",
-        `- accesses ${fmtNumber(memory.accesses)} · mapped ${fmtNumber(memory.mapped_accesses)} · wait cycles ${fmtNumber(memory.wait_cycles)}`,
+        `- accesses ${fmtNumber(memory.accesses)} | mapped ${fmtNumber(memory.mapped_accesses)} | wait cycles ${fmtNumber(memory.wait_cycles)}`,
         "",
       );
     }
@@ -187,7 +187,7 @@ export function BinaryAnalysisView({
       lines.push(
         "## Branch prediction",
         "",
-        `- model ${str(branch.model)} · branches analyzed ${fmtNumber(branch.branches_analyzed)} · penalty ${fmtNumber(branch.mispredict_penalty)} cy`,
+        `- model ${str(branch.model)} | branches analyzed ${fmtNumber(branch.branches_analyzed)} | penalty ${fmtNumber(branch.mispredict_penalty)} cy`,
         "",
       );
     }
@@ -231,7 +231,7 @@ export function BinaryAnalysisView({
       <section className="analysis-setup">
         <div className="analysis-setup-head">
           <div>
-            <div className="sem-eyebrow">ANALYSIS SETUP · RUN CONFIGURATION</div>
+            <div className="sem-eyebrow">ANALYSIS SETUP | RUN CONFIGURATION</div>
             <h3>Choose how the static timing model is built</h3>
             <div className="faint">
               CPU model supplies the built-in instruction costs. A board profile adds
@@ -241,12 +241,12 @@ export function BinaryAnalysisView({
             </div>
           </div>
           <button className="btn accent" disabled={!canRun || busy} onClick={onRun}>
-            {busy ? "ANALYZING…" : "RUN ANALYSIS"}
+            {busy ? "ANALYZING..." : "RUN ANALYSIS"}
           </button>
         </div>
         <div className="analysis-setup-grid">
           <label>
-            <span>1 · CPU TIMING MODEL</span>
+            <span>1 | CPU TIMING MODEL</span>
             <select
               value={options.cpu ?? ""}
               disabled={busy}
@@ -265,7 +265,7 @@ export function BinaryAnalysisView({
             </select>
           </label>
           <label>
-            <span>2 · BOARD PROFILE</span>
+            <span>2 | BOARD PROFILE</span>
             <select
               value={options.board_profile ?? ""}
               disabled={busy}
@@ -290,16 +290,16 @@ export function BinaryAnalysisView({
               {profiles.map((profile) => (
                 <option key={profile.path} value={profile.path}>
                   {profile.name}
-                  {profile.cpu ? ` · ${profile.cpu}` : ""}
+                  {profile.cpu ? ` | ${profile.cpu}` : ""}
                 </option>
               ))}
             </select>
             <button className="btn small" disabled={busy} onClick={() => void importProfileFile()}>
-              OPEN PROFILE FILE…
+              OPEN PROFILE FILE...
             </button>
           </label>
           <label>
-            <span>3 · FREQUENCY</span>
+            <span>3 | FREQUENCY</span>
             <input
               value={options.freq ?? ""}
               disabled={busy}
@@ -322,7 +322,7 @@ export function BinaryAnalysisView({
         </div>
         {configDirty && (
           <div className="faint" style={{ color: "#f2c14e" }}>
-            Configuration changed since this run — press RUN ANALYSIS to rebuild. The
+            Configuration changed since this run - press RUN ANALYSIS to rebuild. The
             results and caveats below still describe the previous run.
           </div>
         )}
@@ -342,7 +342,7 @@ export function BinaryAnalysisView({
         )}
         <div className="faint">
           Without a board profile only the CPU's built-in instruction table is applied,
-          so CACHES / DATA MEMORY / BRANCHES / WCET stay empty — that is expected, not a
+          so CACHES / DATA MEMORY / BRANCHES / WCET stay empty - that is expected, not a
           failure. With <code>cortex-m4-pipeline</code> you get pipeline cycle costs;
           cache/WCET profiles must match the selected CPU (e.g. <code>cortex-m7-wcet</code>{" "}
           needs CPU <code>cortex-m7</code>).{" "}
@@ -358,16 +358,16 @@ export function BinaryAnalysisView({
 
       <div className="analysis-toolbar">
         <div>
-          <div className="sem-eyebrow">STATIC ANALYSIS · BOARD PROFILE</div>
+          <div className="sem-eyebrow">STATIC ANALYSIS | BOARD PROFILE</div>
           <h3 className="analysis-title">
-            {str(model.id) || "no timing model"} · {profileId}
+            {str(model.id) || "no timing model"} | {profileId}
           </h3>
           <div className="mono faint">
-            {str(model.core) || "—"} · {str(model.determinism) || "—"} ·{" "}
+            {str(model.core) || "-"} | {str(model.determinism) || "-"} |{" "}
             {frequency !== null
               ? `${(frequency / 1_000_000).toFixed(1)} MHz`
               : "no frequency"}
-            {profileSha ? ` · sha ${profileSha.slice(0, 12)}…` : ""}
+            {profileSha ? ` | sha ${profileSha.slice(0, 12)}...` : ""}
           </div>
         </div>
         <div className="action-row">
@@ -409,7 +409,7 @@ export function BinaryAnalysisView({
             <Fact label="board profile" value={profileId} />
             <Fact
               label="frequency"
-              value={frequency !== null ? `${(frequency / 1_000_000).toFixed(1)} MHz` : "—"}
+              value={frequency !== null ? `${(frequency / 1_000_000).toFixed(1)} MHz` : "-"}
             />
             <Fact label="wcet roots" value={String(wcetRoots.length)} />
             <Fact label="functions" value={String(binary.functions)} />
@@ -438,9 +438,9 @@ export function BinaryAnalysisView({
       <div className="analysis-grid">
       {tab === "wcet" && wcet && (
           <section className="analysis-card analysis-card-wide">
-            <div className="sem-eyebrow">WCET · CFG LONGEST PATH</div>
+            <div className="sem-eyebrow">WCET | CFG LONGEST PATH</div>
             <div className="analysis-facts">
-              <Fact label="model" value={str(wcet.model) || "—"} />
+              <Fact label="model" value={str(wcet.model) || "-"} />
               <Fact label="functions" value={fmtNumber(wcet.functions_analyzed)} />
               <Fact label="partial" value={fmtNumber(wcet.functions_partial)} />
               <Fact label="unbounded" value={fmtNumber(wcet.functions_unbounded)} />
@@ -462,13 +462,13 @@ export function BinaryAnalysisView({
               <tbody>
                 {wcetRoots.map((root, index) => (
                   <tr key={`${str(root.function)}-${index}`}>
-                    <td className="bin-name">{str(root.name) || "—"}</td>
+                    <td className="bin-name">{str(root.name) || "-"}</td>
                     <td>{str(root.kind)}</td>
                     <td className={`wcet-status ${str(root.status)}`}>{str(root.status)}</td>
                     <td align="right">{fmtNumber(root.cycles, 1)}</td>
                     <td align="right">{fmtNumber(root.time_ns, 1)}</td>
                     <td align="right">
-                      {Array.isArray(root.path) ? root.path.length : "—"}
+                      {Array.isArray(root.path) ? root.path.length : "-"}
                     </td>
                     <td align="right">
                       {Array.isArray(root.path) && root.path.length > 0 ? (
@@ -483,7 +483,7 @@ export function BinaryAnalysisView({
                           CFG
                         </button>
                       ) : (
-                        "—"
+                        "-"
                       )}
                     </td>
                   </tr>
@@ -500,7 +500,7 @@ export function BinaryAnalysisView({
             <div className="analysis-facts">
               <Fact label="model" value={str(icache.model)} />
               <Fact label="size" value={`${fmtNumber(icache.size)} B`} />
-              <Fact label="line" value={`${fmtNumber(icache.line_bytes)} B · ${fmtNumber(icache.ways)} ways`} />
+              <Fact label="line" value={`${fmtNumber(icache.line_bytes)} B | ${fmtNumber(icache.ways)} ways`} />
               <Fact label="miss penalty" value={`${fmtNumber(icache.miss_penalty)} cy`} />
               <Fact label="blocks" value={fmtNumber(icache.blocks_analyzed)} />
               <Fact label="fallback" value={fmtNumber(icache.blocks_fallback)} />

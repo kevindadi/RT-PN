@@ -32,7 +32,7 @@ function GraphNodeCard({ data }: NodeProps<FlowNode>) {
     >
       <Handle type="target" position={Position.Left} className="flow-handle" />
       <div className="flow-node-id">{data.label}</div>
-      {data.detail && data.detail !== "—" && (
+      {data.detail && data.detail !== "-" && (
         <div className="flow-node-detail">{data.detail}</div>
       )}
       {data.extra && <div className="flow-node-extra">{data.extra}</div>}
@@ -140,9 +140,9 @@ function layoutGraph(graph: Graph): Map<number, { x: number; y: number }> {
 }
 
 function shortLabel(label: string): string | undefined {
-  if (!label || label === "—") return undefined;
+  if (!label || label === "-") return undefined;
   const first = label.replace(/\n/g, " ").split(",")[0].trim();
-  return first.length > 24 ? `${first.slice(0, 23)}…` : first;
+  return first.length > 24 ? `${first.slice(0, 23)}...` : first;
 }
 
 interface GraphPreviewProps {

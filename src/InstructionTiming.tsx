@@ -5,19 +5,19 @@ import { readTextFile, writeTextFile } from "./api";
 import type { ElfWorkflow } from "./types";
 
 const CLASSES = [
-  ["alu", "整数/逻辑运算（add, mov, cmp, …）"],
-  ["load", "内存读取（ldr/ldrb/ldrh, …）"],
-  ["store", "内存写入（str/strb/strh, …）"],
-  ["push-pop", "栈操作（push/pop）"],
-  ["ldm-stm", "多寄存器 load/store（ldm/stm）"],
-  ["branch", "条件/无条件分支，含 bx"],
-  ["call", "函数调用（bl/blx）"],
-  ["return", "返回路径（当前由 branch/call 推导）"],
-  ["multiply", "乘法（mul/mla/umull, …）"],
-  ["divide", "除法（sdiv/udiv）"],
-  ["barrier", "内存屏障（dmb/dsb/isb）"],
-  ["nop", "空操作"],
-  ["other", "未分类/回退"],
+  ["alu", "Integer / logic operations (add, mov, cmp, ...)"],
+  ["load", "Memory reads (ldr, ldrb, ldrh, ...)"],
+  ["store", "Memory writes (str, strb, strh, ...)"],
+  ["push-pop", "Stack push/pop"],
+  ["ldm-stm", "Multiple-register load/store (ldm, stm)"],
+  ["branch", "Conditional / unconditional branches, including bx"],
+  ["call", "Function calls (bl, blx)"],
+  ["return", "Return paths (derived from branch/call)"],
+  ["multiply", "Multiplication (mul, mla, umull, ...)"],
+  ["divide", "Division (sdiv, udiv)"],
+  ["barrier", "Memory barriers (dmb, dsb, isb)"],
+  ["nop", "No operation"],
+  ["other", "Unclassified / fallback"],
 ] as const;
 
 interface OverrideRow {
@@ -42,7 +42,7 @@ function parseOverrides(text: string): ParsedOverride[] {
     const mnemonicMatch = body.match(/^\s*mnemonic\s*=\s*"([^"]+)"/m);
     const cyclesMatch = body.match(/cycles\s*=\s*(\{[^}]*\}|\d+)/);
     const selector =
-      [classMatch?.[1], mnemonicMatch?.[1]].filter(Boolean).join(" · ") || "?";
+      [classMatch?.[1], mnemonicMatch?.[1]].filter(Boolean).join(" | ") || "?";
     const minMatch = cyclesMatch?.[1]?.match(/min\s*=\s*(\d+)/);
     const maxMatch = cyclesMatch?.[1]?.match(/max\s*=\s*(\d+)/);
     const exact = cyclesMatch?.[1]?.match(/^\d+$/);
@@ -106,7 +106,7 @@ export function InstructionTiming({
     const min = Number(minCycles);
     const max = Number(maxCycles);
     if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min) {
-      setNote("cycle bounds must be non-negative and ordered (min ≤ max)");
+      setNote("cycle bounds must be non-negative and ordered (min <= max)");
       return;
     }
     const selector = mnemonic.trim()
@@ -117,7 +117,7 @@ export function InstructionTiming({
       `cycles = { min = ${min}, max = ${max} }\n`;
     setText((previous) => previous + snippet);
     setNote(
-      `added override (${mnemonic.trim() || classSel}, ${min}–${max} cycles) — SAVE AS a profile copy to use it`,
+      `added override (${mnemonic.trim() || classSel}, ${min}-${max} cycles) - SAVE AS a profile copy to use it`,
     );
   };
 
@@ -131,7 +131,7 @@ export function InstructionTiming({
       if (!target) return;
       await writeTextFile(target, text);
       onProfileSaved(target);
-      setNote(`saved ${target} — press RUN ANALYSIS to apply it`);
+      setNote(`saved ${target} - press RUN ANALYSIS to apply it`);
     } catch (reason) {
       setNote(String(reason));
     }
@@ -146,9 +146,9 @@ export function InstructionTiming({
             {binary.analysis.model && typeof binary.analysis.model.id === "string"
               ? String(binary.analysis.model.id)
               : "no timing model"}{" "}
-            · {binary.analysis.model && typeof binary.analysis.model.determinism === "string"
+            | {binary.analysis.model && typeof binary.analysis.model.determinism === "string"
               ? String(binary.analysis.model.determinism)
-              : "—"}
+              : "-"}
           </h3>
           <div className="faint">
             Built-in instruction classes come from the selected CPU model. Add overrides
@@ -223,7 +223,7 @@ export function InstructionTiming({
               {overrides.length === 0 && (
                 <tr>
                   <td colSpan={2} className="faint">
-                    no overrides in this profile — the CPU model's built-in class table is
+                    no overrides in this profile - the CPU model's built-in class table is
                     used
                   </td>
                 </tr>
@@ -231,7 +231,7 @@ export function InstructionTiming({
             </tbody>
           </table>
           <div className="faint" style={{ marginTop: 6 }}>
-            Board profile: {boardProfile || "none"} {busy ? "· loading…" : ""}
+            Board profile: {boardProfile || "none"} {busy ? "| loading..." : ""}
           </div>
         </div>
       </div>
@@ -280,7 +280,7 @@ export function InstructionTiming({
           </button>
         </div>
         <div className="faint" style={{ marginTop: 6 }}>
-          Class list: {CLASSES.map(([value]) => value).join(" · ")}. A mnemonic beats a
+          Class list: {CLASSES.map(([value]) => value).join(" | ")}. A mnemonic beats a
           class selector; matching is case-insensitive and ignores a trailing .w/.n.
         </div>
         {note && <div className="faint analysis-note">{note}</div>}
@@ -290,7 +290,7 @@ export function InstructionTiming({
         <summary>RAW PROFILE TOML</summary>
         <div className="faint">
           {boardProfile
-            ? "advanced editing — changes above are appended here"
+            ? "advanced editing - changes above are appended here"
             : "select a board profile in RUN CONFIGURATION to edit its TOML"}
         </div>
         <textarea

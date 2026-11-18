@@ -86,7 +86,7 @@ export function Mermaid({ chart, className }: { chart: string; className?: strin
       ) : svg ? (
         <div className="mmd-canvas" dangerouslySetInnerHTML={{ __html: svg }} />
       ) : (
-        <div className="mmd-loading">rendering diagram…</div>
+        <div className="mmd-loading">rendering diagram...</div>
       )}
     </div>
   );

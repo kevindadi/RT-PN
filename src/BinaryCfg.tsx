@@ -27,10 +27,10 @@ function cfgText(cfg: BinaryFunctionCfg): string {
     (sum, block) => sum + (block.instructions?.length ?? 0),
     0,
   );
-  lines.push(`${cfg.name || cfg.selector}  @ ${cfg.address || "—"}`);
+  lines.push(`${cfg.name || cfg.selector}  @ ${cfg.address || "-"}`);
   lines.push(
-    `${cfg.kind || "function"} · ${cfg.language || "—"} · ` +
-      `${cfg.blocks.length} blocks · ${cfg.edges.length} edges · ${instructionCount} instructions`,
+    `${cfg.kind || "function"} | ${cfg.language || "-"} | ` +
+      `${cfg.blocks.length} blocks | ${cfg.edges.length} edges | ${instructionCount} instructions`,
   );
   const file = str(source.file);
   if (file) lines.push(`source: ${file}:${str(source.line)}`);
@@ -41,7 +41,7 @@ function cfgText(cfg: BinaryFunctionCfg): string {
     const cycles =
       cyclesMin === undefined && cyclesMax === undefined
         ? ""
-        : `  cycles ${cyclesMin ?? "?"}–${cyclesMax ?? "?"}`;
+        : `  cycles ${cyclesMin ?? "?"}-${cyclesMax ?? "?"}`;
     lines.push(
       `  ${block.address ?? block.id}  size=${block.size ?? "?"}  ` +
         `${block.terminator ?? "fallthrough"}${cycles}`,
@@ -53,7 +53,7 @@ function cfgText(cfg: BinaryFunctionCfg): string {
       const text =
         instruction.text ??
         `${instruction.mnemonic ?? ""} ${instruction.operands ?? ""}`.trim();
-      lines.push(`    ${instruction.address ?? "—"}  ${text}${sourceLocation}`);
+      lines.push(`    ${instruction.address ?? "-"}  ${text}${sourceLocation}`);
     }
     if ((block.calls ?? []).length > 0) {
       const targets = (block.calls ?? [])
@@ -92,7 +92,7 @@ function cyclesLabel(block: BinaryCfgBlock): string {
   const min = block.cycles?.min;
   const max = block.cycles?.max;
   if (min === undefined && max === undefined) return "";
-  return `${min ?? "?"}–${max ?? "?"} cy`;
+  return `${min ?? "?"}-${max ?? "?"} cy`;
 }
 
 function CfgBlockCard({ data }: NodeProps<CfgNode>) {
@@ -203,7 +203,7 @@ function BlockInstructions({ block }: { block: BinaryCfgBlock }) {
       <div className="cfg-inst-head">
         <span className="sem-eyebrow">BLOCK {block.address ?? block.id}</span>
         <span className="mono faint">
-          {block.terminator ?? "fallthrough"} · {cyclesLabel(block) || "no cycle data"} ·{" "}
+          {block.terminator ?? "fallthrough"} | {cyclesLabel(block) || "no cycle data"} |{" "}
           {block.size ?? "?"} bytes
         </span>
       </div>
@@ -229,14 +229,14 @@ function BlockInstructions({ block }: { block: BinaryCfgBlock }) {
                       : ""
               }
             >
-              <td className="mono">{instruction.address ?? "—"}</td>
+              <td className="mono">{instruction.address ?? "-"}</td>
               <td className="mono cfg-insn-text">
                 {instruction.text ?? `${instruction.mnemonic ?? ""} ${instruction.operands ?? ""}`}
               </td>
               <td className="mono faint">
                 {instruction.source?.file
                   ? `${instruction.source.file}:${instruction.source.line ?? "?"}`
-                  : "—"}
+                  : "-"}
               </td>
             </tr>
           ))}
@@ -308,7 +308,7 @@ export function BinaryCfg({
     return (
       <div className="bin-cfg bin-cfg-empty">
         <div className="sem-eyebrow">CFG EXPLORER</div>
-        <p>loading function CFG for {selector || "default root"}…</p>
+        <p>loading function CFG for {selector || "default root"}...</p>
       </div>
     );
   }
@@ -338,7 +338,7 @@ export function BinaryCfg({
         <div className="cfg-toolbar-title">
           <h3>{cfg.name || cfg.selector}</h3>
           <div className="mono faint">
-            {cfg.address || "—"} · {cfg.blocks.length} blocks · {cfg.edges.length} edges ·{" "}
+            {cfg.address || "-"} | {cfg.blocks.length} blocks | {cfg.edges.length} edges |{" "}
             {cfg.blocks.reduce((sum, block) => sum + (block.instructions?.length ?? 0), 0)}{" "}
             instructions
           </div>
@@ -375,7 +375,7 @@ export function BinaryCfg({
           <div className="cfg-graph">
             {pathSet.size > 0 && (
               <div className="cfg-path-badge">
-                WCET LONGEST PATH · {pathSet.size} blocks highlighted
+                WCET LONGEST PATH | {pathSet.size} blocks highlighted
               </div>
             )}
             <ReactFlow

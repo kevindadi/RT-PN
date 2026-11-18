@@ -21,7 +21,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "fixed",
     label: "Fixed priority",
     family: "static priority",
-    orderRule: "E_pri = { t ∈ E_struct | priority(t) is maximal }",
+    orderRule: "E_pri = { t  in  E_struct | priority(t) is maximal }",
     clocks: "x0, h_t (execution), w_t (suspension; projected out by default)",
     extraState: [],
     firing: [
@@ -35,9 +35,9 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
   },
   {
     id: "fixed_prior_with_resume",
-    label: "Fixed priority · resume preemption",
+    label: "Fixed priority | resume preemption",
     family: "static priority",
-    orderRule: "E_pri = { t ∈ E_struct | priority(t) is maximal }",
+    orderRule: "E_pri = { t  in  E_struct | priority(t) is maximal }",
     clocks: "x0, h_t, w_t (suspension projected out by default)",
     extraState: [],
     firing: [
@@ -50,9 +50,9 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
   },
   {
     id: "fixed_prior_with_restart",
-    label: "Fixed priority · restart preemption",
+    label: "Fixed priority | restart preemption",
     family: "static priority",
-    orderRule: "E_pri = { t ∈ E_struct | priority(t) is maximal }",
+    orderRule: "E_pri = { t  in  E_struct | priority(t) is maximal }",
     clocks: "x0, h_t (reset on preemption)",
     extraState: [],
     firing: [
@@ -67,7 +67,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "rm",
     label: "Rate monotonic",
     family: "static priority (derived)",
-    orderRule: "priority(t) = ordered by period p_t (shorter p_t → higher priority)",
+    orderRule: "priority(t) = ordered by period p_t (shorter p_t -> higher priority)",
     clocks: "x0, h_t, w_t",
     extraState: [],
     firing: [
@@ -82,7 +82,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "dm",
     label: "Deadline monotonic",
     family: "static priority (derived)",
-    orderRule: "priority(t) = ordered by relative deadline D_t (shorter D_t → higher priority)",
+    orderRule: "priority(t) = ordered by relative deadline D_t (shorter D_t -> higher priority)",
     clocks: "x0, h_t, w_t",
     extraState: [],
     firing: [
@@ -99,7 +99,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     family: "static priority + lock protocol",
     orderRule: "effective priority(t) = max(own priority, max priority of tasks blocked by t)",
     clocks: "x0, h_t, w_t",
-    extraState: ["lock ownership L(m) ⊆ T derived from the marking"],
+    extraState: ["lock ownership L(m) subset T derived from the marking"],
     firing: [
       "Lock owners inherit the priority of the blocked tasks; E_pri is computed from effective priorities.",
       "Firing re-derives ownership and the effective priorities of the new state class.",
@@ -112,9 +112,9 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "pcp",
     label: "Priority ceiling (PCP)",
     family: "static priority + lock protocol",
-    orderRule: "admission: priority(t) > system ceiling Γ; effective priority = max(own, inherited)",
+    orderRule: "admission: priority(t) > system ceiling Gamma; effective priority = max(own, inherited)",
     clocks: "x0, h_t, w_t",
-    extraState: ["static lock ceilings", "system ceiling Γ = max ceiling of locked resources"],
+    extraState: ["static lock ceilings", "system ceiling Gamma = max ceiling of locked resources"],
     firing: [
       "Ceiling-based admission gates which structurally enabled transitions may run.",
       "Transitive inheritance raises the owner priority; canonicalization keeps the zone exact.",
@@ -127,9 +127,9 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "srp",
     label: "Stack resource policy (SRP)",
     family: "static priority + lock protocol",
-    orderRule: "start gate: fire only if priority(t) > Γ; no priority inheritance",
+    orderRule: "start gate: fire only if priority(t) > Gamma; no priority inheritance",
     clocks: "x0, h_t, w_t",
-    extraState: ["static lock ceilings", "global system ceiling Γ"],
+    extraState: ["static lock ceilings", "global system ceiling Gamma"],
     firing: [
       "No owner priority inflation: admission is controlled solely by the system-ceiling gate.",
       "Scheduling decisions branch on the admissible selected active set.",
@@ -142,7 +142,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "edf",
     label: "Earliest deadline first (job-clock EDF)",
     family: "dynamic priority (job-clock)",
-    orderRule: "E_pri = { t ∈ E_struct | absolute deadline d_t is minimal among released jobs }",
+    orderRule: "E_pri = { t  in  E_struct | absolute deadline d_t is minimal among released jobs }",
     clocks: "x0, r_i (per-job release), h_t, w_t; clock layout includes release clocks",
     extraState: ["one in-flight job per task", "per-job release clock r_i"],
     firing: [
@@ -158,7 +158,7 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "fifo",
     label: "FIFO (arrival order)",
     family: "dynamic priority (job-clock)",
-    orderRule: "E_pri = { t ∈ E_struct | r_t is minimal (earliest release) }",
+    orderRule: "E_pri = { t  in  E_struct | r_t is minimal (earliest release) }",
     clocks: "x0, r_i (per-job release), h_t, w_t",
     extraState: ["per-job release clock r_i"],
     firing: [
@@ -174,9 +174,9 @@ export const SCHEDULING_POLICIES: SchedulingPolicy[] = [
     id: "llf",
     label: "Least laxity first (event-driven)",
     family: "dynamic priority (laxity clock)",
-    orderRule: "E_pri = { t ∈ E_struct | laxity χ_t = D_t − now − remaining_work_t is minimal }",
-    clocks: "x0, χ_i (laxity), h_t; deterministic segments only",
-    extraState: ["laxity clocks χ_i", "deterministic (zero-width) execution segments"],
+    orderRule: "E_pri = { t  in  E_struct | laxity chi_t = D_t - now - remaining_work_t is minimal }",
+    clocks: "x0, chi_i (laxity), h_t; deterministic segments only",
+    extraState: ["laxity clocks chi_i", "deterministic (zero-width) execution segments"],
     firing: [
       "Event-driven LLF: priority is recomputed from the laxity clock at each event.",
       "This is not classical continuous-time LLF; segments must be deterministic.",
@@ -201,11 +201,11 @@ function stateChart(policy: SchedulingPolicy): string {
     .join("\n");
   return `flowchart TB
   S["state class<br/><b>S = (M, Z, E_struct, E_pri, Susp)</b>"]
-  S --> M["<b>M</b> · marking<br/>place tokens"]
-  S --> Z["<b>Z</b> · DBM clock zone<br/>canonical difference bounds"]
-  S --> ES["<b>E_struct</b> · structurally enabled"]
-  S --> EP["<b>E_pri</b> · selected active set<br/>${diagramLabel(policy.orderRule)}"]
-  S --> SUS["<b>Susp</b> · suspended transitions<br/>frozen execution clocks"]
+  S --> M["<b>M</b> | marking<br/>place tokens"]
+  S --> Z["<b>Z</b> | DBM clock zone<br/>canonical difference bounds"]
+  S --> ES["<b>E_struct</b> | structurally enabled"]
+  S --> EP["<b>E_pri</b> | selected active set<br/>${diagramLabel(policy.orderRule)}"]
+  S --> SUS["<b>Susp</b> | suspended transitions<br/>frozen execution clocks"]
   Z --> CLK["clocks<br/>${diagramLabel(policy.clocks)}"]
 ${extra}
   classDef core fill:#12314f,stroke:#4fa3ff,stroke-width:2px,color:#e6f1ff
@@ -216,11 +216,11 @@ ${extra}
 
 function firingChart(policy: SchedulingPolicy): string {
   return `flowchart LR
-  A["state class S"] -->|"time elapse δ ≥ 0"| B["S′ = S ↑ δ"]
+  A["state class S"] -->|"time elapse dt >= 0"| B["S' = S ^ dt"]
   B -->|"structural enabling"| C{"E_struct"}
   C -->|"priority filter"| D["<b>E_pri</b><br/>${diagramLabel(policy.orderRule)}"]
-  D -->|"fire t ∈ E_pri"| E["M′ = M − •t + t•"]
-  E -->|"canonicalize Z"| F["state class S″"]
+  D -->|"fire t  in  E_pri"| E["M' = M - *t + t*"]
+  E -->|"canonicalize Z"| F["state class S''"]
   F -->|"branch on each admissible E_pri / tie order"| A
   classDef hot fill:#12314f,stroke:#4fa3ff,stroke-width:2px,color:#e6f1ff
   class D hot`;
@@ -296,7 +296,7 @@ function SemanticsAnimation({ policy }: { policy: SchedulingPolicy }) {
       </div>
       <div className="sem-zone" data-canonical={canonical || undefined}>
         <span>Z</span>
-        <span className="math">x0 − x0 ≤ 0 · h_t ∈ [l, u] · r_i ≤ D_i</span>
+        <span className="math">{"x0 - x0 <= 0 | h_t in [l, u] | r_i <= D_i"}</span>
       </div>
     </section>
   );
@@ -345,7 +345,7 @@ export function SemanticsStage({
 
       <section className="sem-diagram">
         <div className="sem-diagram-head">
-          <div className="sem-eyebrow">FORMAL STATE · MERMAID</div>
+          <div className="sem-eyebrow">FORMAL STATE | MERMAID</div>
           <h3>State-class definition</h3>
         </div>
         <Mermaid chart={stateChart(policy)} />
@@ -353,8 +353,8 @@ export function SemanticsStage({
 
       <section className="sem-diagram">
         <div className="sem-diagram-head">
-          <div className="sem-eyebrow">FIRING SEMANTICS · MERMAID</div>
-          <h3>Time elapse → structural enabling → priority filter → fire → canonicalize</h3>
+          <div className="sem-eyebrow">FIRING SEMANTICS | MERMAID</div>
+          <h3>Time elapse to structural enabling to priority filter to fire to canonicalize</h3>
         </div>
         <Mermaid chart={firingChart(policy)} />
       </section>
@@ -401,12 +401,12 @@ export function SemanticsStage({
           Runs the loaded model once per policy with the current tie mode
           <span className="math"> {tie}</span>, bounded to{" "}
           <span className="math">{sweepBudget.maxStates.toLocaleString()}</span> states and{" "}
-          <span className="math">{sweepBudget.timeoutSecs || "∞"} s</span> per policy. The
+          <span className="math">{sweepBudget.timeoutSecs || "inf"} s</span> per policy. The
           selected policy above is not changed.
         </p>
         {sweep.length === 0 ? (
           <div className="faint">
-            {sweepBusy ? "sweeping policies…" : "run a sweep to compare verdicts, WCRT and state counts"}
+            {sweepBusy ? "sweeping policies..." : "run a sweep to compare verdicts, WCRT and state counts"}
           </div>
         ) : (
           <table className="sem-sweep-table">
@@ -435,7 +435,7 @@ export function SemanticsStage({
                 >
                   <td>{entry.label}</td>
                   <td>{entry.status}</td>
-                  <td align="right">{entry.maxWcrt ?? "—"}</td>
+                  <td align="right">{entry.maxWcrt ?? "-"}</td>
                   <td align="right">{entry.states}</td>
                   <td align="right">{entry.deadlocks}</td>
                   <td align="right">{entry.elapsedMs} ms</td>
@@ -453,10 +453,10 @@ export function SemanticsStage({
             <h3>ptpn describe</h3>
           </div>
           <button className="btn small" disabled={describeBusy} onClick={onRefreshDescription}>
-            {describeBusy ? "RUNNING…" : "REFRESH"}
+            {describeBusy ? "RUNNING..." : "REFRESH"}
           </button>
         </div>
-        <pre>{describeBusy ? "running ptpn describe…" : describeText || "Analyze an RTSL model to get the model-specific restatement of the effective semantics."}</pre>
+        <pre>{describeBusy ? "running ptpn describe..." : describeText || "Analyze an RTSL model to get the model-specific restatement of the effective semantics."}</pre>
       </section>
     </div>
   );

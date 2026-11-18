@@ -2222,7 +2222,7 @@ button {
   }
 }
 
-/* ---------- replay ↔ WCRT playhead sync ---------- */
+/* ---------- replay <-> WCRT playhead sync ---------- */
 
 .replay-gantt {
   max-width: 980px;
@@ -2478,7 +2478,7 @@ textarea {
 }
 
 .hub-list li::before {
-  content: "—";
+  content: "-";
   position: absolute;
   left: 0;
   color: #4fa3ff;
@@ -4068,7 +4068,7 @@ body,
 }
 
 .fold > summary::before {
-  content: "▸";
+  content: ">";
   color: #4f7396;
   font-size: 9px;
   transition: transform 140ms ease;

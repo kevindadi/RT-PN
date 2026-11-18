@@ -49,7 +49,7 @@ export function buildCompareHtml(exportData: CompareExport): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${title} · policy-aware replay</title>
+<title>${title} | policy-aware replay</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -107,22 +107,22 @@ export function buildCompareHtml(exportData: CompareExport): string {
     <div class="badges">
       <span class="badge">${exportData.lanes.length} policies</span>
       <span class="badge">tie ${tie}</span>
-      <span class="badge">bounded ${exportData.maxStates} states · ${exportData.timeoutSecs || "∞"} s each</span>
+      <span class="badge">bounded ${exportData.maxStates} states | ${exportData.timeoutSecs || "inf"} s each</span>
     </div>
   </header>
 
   <div class="controls">
-    <button id="reset" title="reset">⏮</button>
-    <button id="prev">◀</button>
+    <button id="reset" title="reset">|<</button>
+    <button id="prev"><</button>
     <button id="play" class="primary">PAUSE</button>
-    <button id="next">▶</button>
-    <button id="end">⏭</button>
+    <button id="next">></button>
+    <button id="end">>|</button>
     <input id="range" type="range" min="0" max="0" value="0" />
     <span id="counter" class="counter"></span>
     <select id="speed">
-      <option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option>
-      <option value="2">2×</option>
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
     </select>
   </div>
 
@@ -195,10 +195,10 @@ export function buildCompareHtml(exportData: CompareExport): string {
       '<div class="head"><span class="lane-title">' + esc(lane.label) + '</span>' +
       '<span class="status ' + statusClass + '">' + esc(lane.status) + "</span></div>" +
       '<div class="meta">' + esc(lane.mode || lane.error || "no replay path") + "</div>" +
-      '<h3>MARKING · M</h3><div class="marking" data-role="marking"></div>' +
+      '<h3>MARKING | M</h3><div class="marking" data-role="marking"></div>' +
       '<h3>FIRED</h3><div class="fired" data-role="fired"></div>' +
       '<div class="step-meta" data-role="stepmeta"></div>' +
-      '<h3>SELECTED ACTIVE SET · E_pri</h3><div class="chips" data-role="active"></div>';
+      '<h3>SELECTED ACTIVE SET | E_pri</h3><div class="chips" data-role="active"></div>';
     lanesEl.appendChild(section);
   });
 
@@ -223,10 +223,10 @@ export function buildCompareHtml(exportData: CompareExport): string {
         for (var slot = 0; slot < Math.min(place.tokens, 4); slot += 1) dots += '<i class="tok"></i>';
         var added = (previousCounts[place.name] || 0) > 0 ? "" : " added";
         return '<span class="place' + added + '"><span class="place-name">' + esc(place.name) +
-          '</span><span class="tokens">' + dots + '</span><span class="count">×' + place.tokens + "</span></span>";
+          '</span><span class="tokens">' + dots + '</span><span class="count">x' + place.tokens + "</span></span>";
       }).join("");
       firedEl.textContent = step.transition || "(initial state)";
-      metaEl.textContent = step.state + " · t = " + (step.elapsed || "0") + " · step " + (laneIndex + 1) + "/" + lane.steps.length;
+      metaEl.textContent = step.state + " | t = " + (step.elapsed || "0") + " | step " + (laneIndex + 1) + "/" + lane.steps.length;
       var active = parseEntries(step.active);
       activeEl.innerHTML = active.length === 0 ? '<span style="color:#8fa8c0">(none)</span>' : active.slice(0, 4).map(function (entry) {
         return '<span class="chip">' + esc(entry) + "</span>";

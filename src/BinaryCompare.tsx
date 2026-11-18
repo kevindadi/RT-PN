@@ -12,7 +12,7 @@ const record = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 const show = (value: number | null, digits = 1): string =>
-  value === null ? "—" : digits > 0 ? value.toFixed(digits) : String(Math.round(value));
+  value === null ? "-" : digits > 0 ? value.toFixed(digits) : String(Math.round(value));
 
 interface RootWcet {
   status: string;
@@ -110,7 +110,7 @@ function profileName(profiles: BinaryProfile[], path: string): string {
 }
 
 function StatusCell({ value }: { value: RootWcet | undefined }) {
-  if (!value) return <td align="right">—</td>;
+  if (!value) return <td align="right">-</td>;
   return (
     <td align="right" className={`wcet-status ${value.status}`}>
       {value.status}
@@ -186,34 +186,34 @@ export function BinaryCompare({
   }).sort();
 
   const counterRows: Array<[string, (s: ProfileSummary) => string]> = [
-    ["model", (s) => `${s.model || "—"}${s.determinism ? ` (${s.determinism})` : ""}`],
+    ["model", (s) => `${s.model || "-"}${s.determinism ? ` (${s.determinism})` : ""}`],
     ["functions / blocks", (s) => `${s.functions} / ${s.blocks}`],
     [
       "wcet analyzed / partial / unbounded",
       (s) =>
         s.wcet
           ? `${s.wcet.analyzed} / ${s.wcet.partial} / ${s.wcet.unbounded}`
-          : "—",
+          : "-",
     ],
     [
       "icache blocks / fallback",
-      (s) => (s.icache ? `${s.icache.blocks} / ${s.icache.fallback}` : "—"),
+      (s) => (s.icache ? `${s.icache.blocks} / ${s.icache.fallback}` : "-"),
     ],
     [
       "dcache accesses / resolved / lines",
       (s) =>
-        s.dcache ? `${s.dcache.accesses} / ${s.dcache.resolved} / ${s.dcache.lines}` : "—",
+        s.dcache ? `${s.dcache.accesses} / ${s.dcache.resolved} / ${s.dcache.lines}` : "-",
     ],
     [
       "data-memory accesses / mapped / wait",
-      (s) => (s.memory ? `${s.memory.accesses} / ${s.memory.mapped} / ${s.memory.wait}` : "—"),
+      (s) => (s.memory ? `${s.memory.accesses} / ${s.memory.mapped} / ${s.memory.wait}` : "-"),
     ],
     [
       "branch branches / fallback / penalty",
       (s) =>
         s.branch
           ? `${s.branch.analyzed} / ${s.branch.fallback} / ${s.branch.penalty} cy`
-          : "—",
+          : "-",
     ],
   ];
 
@@ -256,10 +256,10 @@ export function BinaryCompare({
       let contents: string;
       if (format === "md") {
         const lines = [
-          `# Binary profile comparison — ${base}`,
+          `# Binary profile comparison - ${base}`,
           "",
           `- ELF: ${elfPath}`,
-          `- CPU: ${cpu || "auto"} · frequency: ${freq || "profile default"}`,
+          `- CPU: ${cpu || "auto"} | frequency: ${freq || "profile default"}`,
           `- profile A: ${profileName(profiles, profileA)} (${profileA})`,
           `- profile B: ${profileName(profiles, profileB)} (${profileB})`,
           "",
@@ -273,16 +273,16 @@ export function BinaryCompare({
           "",
           "## WCET roots",
           "",
-          "| root | A status | A cycles | B status | B cycles | Δ cycles (B−A) |",
+          "| root | A status | A cycles | B status | B cycles | Delta cycles (B-A) |",
           "| --- | --- | ---: | --- | ---: | ---: |",
           ...rows.map(
             (row) =>
-              `| ${row.root} | ${row.a?.status ?? "—"} | ${show(row.a?.cycles ?? null)} | ${row.b?.status ?? "—"} | ${show(row.b?.cycles ?? null)} | ${row.delta === null ? "—" : `${row.delta > 0 ? "+" : ""}${row.delta.toFixed(1)}`} |`,
+              `| ${row.root} | ${row.a?.status ?? "-"} | ${show(row.a?.cycles ?? null)} | ${row.b?.status ?? "-"} | ${show(row.b?.cycles ?? null)} | ${row.delta === null ? "-" : `${row.delta > 0 ? "+" : ""}${row.delta.toFixed(1)}`} |`,
           ),
           "",
           "## Note",
           "",
-          "Static estimates only — WCET is a CFG longest-path bound under the profile's",
+          "Static estimates only - WCET is a CFG longest-path bound under the profile's",
           "loop bounds, not a hardware proof. CPU/frequency come from run control.",
           "",
         ];
@@ -339,7 +339,7 @@ export function BinaryCompare({
             disabled={running || !profileA || !profileB || profileA === profileB}
             onClick={() => void runComparison()}
           >
-            {running ? "COMPARING…" : "RUN COMPARISON"}
+            {running ? "COMPARING..." : "RUN COMPARISON"}
           </button>
           <button
             className="btn small"
@@ -394,8 +394,8 @@ export function BinaryCompare({
             <thead>
               <tr>
                 <th align="left">metric</th>
-                <th align="left">A · {summaryA.label}</th>
-                <th align="left">B · {summaryB.label}</th>
+                <th align="left">A | {summaryA.label}</th>
+                <th align="left">B | {summaryB.label}</th>
               </tr>
             </thead>
             <tbody>
@@ -417,7 +417,7 @@ export function BinaryCompare({
                 <th align="right">A cycles</th>
                 <th align="right">B status</th>
                 <th align="right">B cycles</th>
-                <th align="right">Δ cycles (B−A)</th>
+                <th align="right">Delta cycles (B-A)</th>
               </tr>
             </thead>
             <tbody>
@@ -445,7 +445,7 @@ export function BinaryCompare({
                       }
                     >
                       {delta === null
-                        ? "—"
+                        ? "-"
                         : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
                     </td>
                   </tr>
@@ -469,7 +469,7 @@ export function BinaryCompare({
         </div>
       )}
       <div className="faint" style={{ marginTop: 8 }}>
-        Static estimates only — WCET is a CFG longest-path bound under the profile's loop
+        Static estimates only - WCET is a CFG longest-path bound under the profile's loop
         bounds, not a hardware proof. CPU/frequency come from RUN CONTROL; use a matching
         CPU when profiles target different cores.
       </div>

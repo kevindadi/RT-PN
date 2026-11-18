@@ -42,8 +42,8 @@ const jsonForScript = (value: unknown): string =>
  */
 export function buildReplayHtml(exportData: ReplayExport): string {
   const title = escapeHtml(exportData.model || "state-class replay");
-  const policy = escapeHtml(exportData.policy || "—");
-  const tie = escapeHtml(exportData.tie || "—");
+  const policy = escapeHtml(exportData.policy || "-");
+  const tie = escapeHtml(exportData.tie || "-");
   const mode = escapeHtml(exportData.mode);
   const data = jsonForScript(exportData);
   const stamp = escapeHtml(exportData.generatedAt);
@@ -53,7 +53,7 @@ export function buildReplayHtml(exportData: ReplayExport): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${title} · state-class replay</title>
+<title>${title} | state-class replay</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -172,27 +172,27 @@ export function buildReplayHtml(exportData: ReplayExport): string {
   </header>
 
   <div class="controls">
-    <button id="reset" title="reset">⏮</button>
-    <button id="prev">◀</button>
+    <button id="reset" title="reset">|<</button>
+    <button id="prev"><</button>
     <button id="play" class="primary">PAUSE</button>
-    <button id="next">▶</button>
-    <button id="end">⏭</button>
+    <button id="next">></button>
+    <button id="end">>|</button>
     <input id="range" type="range" min="0" max="${Math.max(exportData.stepCount - 1, 0)}" value="0" />
     <span id="counter" class="counter">1 / ${exportData.stepCount}</span>
     <select id="speed">
-      <option value="0.5">0.5×</option>
-      <option value="1" selected>1×</option>
-      <option value="2">2×</option>
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
     </select>
   </div>
 
   <div class="stage">
     <section>
-      <h3>MARKING · M</h3>
+      <h3>MARKING | M</h3>
       <div id="marking" class="marking"></div>
     </section>
     <section>
-      <h3>SELECTED ACTIVE SET · E_pri</h3>
+      <h3>SELECTED ACTIVE SET | E_pri</h3>
       <div id="active" class="chips"></div>
       <div id="suspended-wrap" hidden>
         <h3 style="margin-top: 12px">SUSPENDED</h3>
@@ -305,7 +305,7 @@ export function buildReplayHtml(exportData: ReplayExport): string {
         var more = place.tokens > 6 ? "<em>+" + (place.tokens - 6) + "</em>" : "";
         var added = (previousCounts[place.name] || 0) > 0 ? "" : " added";
         return '<div class="place' + added + '"><span class="place-name">' + esc(place.name) +
-          '</span><span class="tokens">' + dots + more + '</span><span class="count">×' +
+          '</span><span class="tokens">' + dots + more + '</span><span class="count">x' +
           place.tokens + "</span></div>";
       }).join("");
     }

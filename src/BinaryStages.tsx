@@ -6,10 +6,10 @@ const text = (value: unknown): string => (typeof value === "string" ? value : ""
 const numeric = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 const formatCycles = (row: BinaryFunctionRow): string => {
-  if (row.cycles_max === null && row.cycles_min === null) return "—";
-  const min = row.cycles_min === null ? "—" : row.cycles_min.toFixed(1);
-  const max = row.cycles_max === null ? "—" : row.cycles_max.toFixed(1);
-  return `${min}–${max} cy`;
+  if (row.cycles_max === null && row.cycles_min === null) return "-";
+  const min = row.cycles_min === null ? "-" : row.cycles_min.toFixed(1);
+  const max = row.cycles_max === null ? "-" : row.cycles_max.toFixed(1);
+  return `${min}-${max} cy`;
 };
 
 const ARCH_PRESETS: Record<string, { label: string; cpu: string; freq: string }> = {
@@ -78,9 +78,9 @@ export function BinaryOverview({
           <h3 className="bin-card-title">{binary.elf_path.split(/[\\/]/).pop() ?? "ELF"}</h3>
           <div className="bin-facts">
             {[
-              ["arch", text(image.arch) || "—"],
-              ["entry", text(image.entry) || "—"],
-              ["type", text(image.elf_type) || "—"],
+              ["arch", text(image.arch) || "-"],
+              ["entry", text(image.entry) || "-"],
+              ["type", text(image.elf_type) || "-"],
               ["symbols", image.has_symbols === true ? "yes" : "no"],
               ["debug info", image.has_debug_info === true ? "yes" : "no"],
               ["size", `${(binary.file_size / 1024).toFixed(1)} KB`],
@@ -100,14 +100,14 @@ export function BinaryOverview({
           </h3>
           <div className="bin-facts">
             {[
-              ["core", text(model.core) || "—"],
-              ["determinism", text(model.determinism) || "—"],
-              ["table", text(model.table_version) || "—"],
+              ["core", text(model.core) || "-"],
+              ["determinism", text(model.determinism) || "-"],
+              ["table", text(model.table_version) || "-"],
               [
                 "frequency",
                 numeric(firstDomain.hz) !== null
                   ? `${(numeric(firstDomain.hz)! / 1_000_000).toFixed(1)} MHz`
-                  : "—",
+                  : "-",
               ],
               ["domains", String(domains.length)],
             ].map(([label, value]) => (
@@ -120,7 +120,7 @@ export function BinaryOverview({
         </section>
 
         <section className="bin-card">
-          <div className="sem-eyebrow">PROGRAM CFG · SCHEMA {binary.schema || "—"}</div>
+          <div className="sem-eyebrow">PROGRAM CFG | SCHEMA {binary.schema || "-"}</div>
           <div className="bin-stat-grid">
             <span>
               <b>{binary.functions}</b>
@@ -155,7 +155,7 @@ export function BinaryOverview({
           <div className="bin-arch-text">
             <span className="sem-eyebrow">DETECTED ARCHITECTURE</span>
             <b>
-              {arch || "unknown"} → preset {preset.label} · {preset.cpu} @ {preset.freq}
+              {arch || "unknown"} to preset {preset.label} | {preset.cpu} @ {preset.freq}
             </b>
             <span className="faint">
               Applying the preset sets the CPU timing model and default frequency; press
@@ -180,7 +180,7 @@ export function BinaryOverview({
       )}
 
       <section className="bin-card bin-card-wide">
-        <div className="sem-eyebrow">HOT FUNCTIONS · MAX BLOCK CYCLES (STATIC ESTIMATE)</div>
+        <div className="sem-eyebrow">HOT FUNCTIONS | MAX BLOCK CYCLES (STATIC ESTIMATE)</div>
         <table className="bin-table">
           <thead>
             <tr>
@@ -195,10 +195,10 @@ export function BinaryOverview({
           <tbody>
             {hot.map((row) => (
               <tr key={row.id ?? row.address ?? row.name}>
-                <td className="bin-name">{row.name ?? "—"}</td>
-                <td className="mono">{row.address ?? "—"}</td>
-                <td>{row.kind ?? "—"}</td>
-                <td align="right">{row.size ?? "—"}</td>
+                <td className="bin-name">{row.name ?? "-"}</td>
+                <td className="mono">{row.address ?? "-"}</td>
+                <td>{row.kind ?? "-"}</td>
+                <td align="right">{row.size ?? "-"}</td>
                 <td align="right">{row.blocks}</td>
                 <td align="right">{formatCycles(row)}</td>
               </tr>
@@ -248,7 +248,7 @@ export function BinaryFunctions({
       <div className="bin-toolbar">
         <input
           type="search"
-          placeholder="filter by name or address…"
+          placeholder="filter by name or address..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -284,14 +284,14 @@ export function BinaryFunctions({
               className="bin-row-button"
               title="Open in CFG stage"
             >
-              <td className="bin-name">{row.name ?? "—"}</td>
-              <td className="mono">{row.address ?? "—"}</td>
-              <td>{row.kind ?? "—"}</td>
-              <td align="right">{row.size ?? "—"}</td>
+              <td className="bin-name">{row.name ?? "-"}</td>
+              <td className="mono">{row.address ?? "-"}</td>
+              <td>{row.kind ?? "-"}</td>
+              <td align="right">{row.size ?? "-"}</td>
               <td align="right">{row.blocks}</td>
               <td align="right">{row.calls}</td>
               <td align="right">{formatCycles(row)}</td>
-              <td align="right">{row.inline_frames > 0 ? row.inline_frames : "—"}</td>
+              <td align="right">{row.inline_frames > 0 ? row.inline_frames : "-"}</td>
             </tr>
           ))}
         </tbody>

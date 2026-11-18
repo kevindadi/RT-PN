@@ -96,7 +96,7 @@ function lineClass(text: string): string | null {
     return "cm-violet";
   }
   if (
-    /^[A-Z][A-Z0-9 ·/_-]{2,}/.test(text) &&
+    /^[A-Z][A-Z0-9 |/_-]{2,}/.test(text) &&
     !text.startsWith("  ")
   ) {
     return "cm-heading";

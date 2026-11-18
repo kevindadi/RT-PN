@@ -27,7 +27,7 @@ function GanttSync({
   return (
     <section className="replay-gantt">
       <div className="replay-gantt-head">
-        <span className="sem-eyebrow">WCRT ENVELOPE · PLAYHEAD</span>
+        <span className="sem-eyebrow">WCRT ENVELOPE | PLAYHEAD</span>
         <span className="mono replay-gantt-time">t = {elapsed}</span>
         {policy && <span className="faint replay-gantt-policy">{policy}</span>}
       </div>
@@ -284,7 +284,7 @@ export function ScgReplay({
         target,
         format === "html" ? buildReplayHtml(payload) : JSON.stringify(payload, null, 2),
       );
-      setExportNote(`saved · ${target}`);
+      setExportNote(`saved | ${target}`);
     } catch (reason) {
       setExportNote(String(reason));
     } finally {
@@ -331,14 +331,14 @@ export function ScgReplay({
 
       <div className="replay-controls">
         <button className="btn small" onClick={() => { setIndex(0); setPlaying(false); }} title="reset">
-          ⏮
+          FIRST
         </button>
         <button
           className="btn small"
           disabled={index === 0}
           onClick={() => { setPlaying(false); setIndex((current) => Math.max(0, current - 1)); }}
         >
-          ◀
+          PREV
         </button>
         <button
           className="btn small accent"
@@ -351,14 +351,14 @@ export function ScgReplay({
           disabled={index === last}
           onClick={() => { setPlaying(false); setIndex((current) => Math.min(last, current + 1)); }}
         >
-          ▶
+          NEXT
         </button>
         <button
           className="btn small"
           disabled={index === last}
           onClick={() => { setPlaying(false); setIndex(last); }}
         >
-          ⏭
+          LAST
         </button>
         <input
           className="replay-range"
@@ -376,9 +376,9 @@ export function ScgReplay({
           value={speed}
           onChange={(event) => setSpeed(Number(event.target.value))}
         >
-          <option value={0.5}>0.5×</option>
-          <option value={1}>1×</option>
-          <option value={2}>2×</option>
+          <option value={0.5}>0.5x</option>
+          <option value={1}>1x</option>
+          <option value={2}>2x</option>
         </select>
         {!hasTrace && (
           <select
@@ -389,7 +389,7 @@ export function ScgReplay({
           >
             {scg.nodes.map((node, position) => (
               <option key={node.id} value={position}>
-                {node.id} · {node.marking}
+                {node.id} | {node.marking}
               </option>
             ))}
           </select>
@@ -400,7 +400,7 @@ export function ScgReplay({
 
       <div className="replay-stage">
         <section className="replay-panel">
-          <h3>MARKING · M</h3>
+          <h3>MARKING | M</h3>
           <div className="replay-marking">
             {notches.length === 0 && <div className="faint">[empty]</div>}
             {notches.map((place) => {
@@ -414,7 +414,7 @@ export function ScgReplay({
                     ))}
                     {place.tokens > 6 && <em>+{place.tokens - 6}</em>}
                   </span>
-                  <span className="replay-count">×{place.tokens}</span>
+                  <span className="replay-count">x{place.tokens}</span>
                 </div>
               );
             })}
@@ -422,7 +422,7 @@ export function ScgReplay({
         </section>
 
         <section className="replay-panel">
-          <h3>SELECTED ACTIVE SET · E_pri</h3>
+          <h3>SELECTED ACTIVE SET | E_pri</h3>
           <div className="replay-chips">
             {active.length === 0 && <div className="faint">(none)</div>}
             {active.map((entry) => (

@@ -13,8 +13,8 @@ export function WorkflowGuide({
             <div className="sem-eyebrow">WORKBENCH GUIDE</div>
             <h2>How to use RT-PN</h2>
             <div className="faint">
-              Two independent workflows: scheduling analysis (RTSL/TDG → PTPN) and
-              binary analysis (ELF → CFG → static timing). Pick one on the start
+              Two independent workflows: scheduling analysis (RTSL/TDG to PTPN) and
+              binary analysis (ELF to CFG to static timing). Pick one on the start
               screen; switch any time from NEW WORKSPACE.
             </div>
           </div>
@@ -24,7 +24,7 @@ export function WorkflowGuide({
         </div>
         <div className="guide-grid">
           <section className="guide-section binary">
-            <h3>Binary analysis (ELF → CFG → timing)</h3>
+            <h3>Binary analysis (ELF to CFG to timing)</h3>
             <ol className="guide-steps">
               <li>
                 <b>Import an ELF</b> with IMPORT ELF, or load the bundled sample
@@ -54,7 +54,7 @@ export function WorkflowGuide({
             </ol>
           </section>
           <section className="guide-section">
-            <h3>Scheduling analysis (RTSL / TDG → PTPN → SCG)</h3>
+            <h3>Scheduling analysis (RTSL / TDG to PTPN to SCG)</h3>
             <ol className="guide-steps">
               <li>
                 <b>Open a model</b> (RTSL/TDG) or load the sample from the start

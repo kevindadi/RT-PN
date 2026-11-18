@@ -90,7 +90,7 @@ const STAGES: Record<
   dag: {
     label: "DAG",
     title: "TASK GRAPH",
-    subtitle: "Text-first DAG / task view · explicit timing provenance",
+    subtitle: "Text-first DAG / task view | explicit timing provenance",
     previewable: false,
   },
   ptpn: {
@@ -120,7 +120,7 @@ const STAGES: Record<
   timeline: {
     label: "TIMELINE",
     title: "TIMELINE / ENVELOPES",
-    subtitle: "Response envelopes · not a concrete schedule",
+    subtitle: "Response envelopes | not a concrete schedule",
     previewable: false,
   },
   report: {
@@ -132,7 +132,7 @@ const STAGES: Record<
   elf: {
     label: "ELF",
     title: "ELF LAYOUT",
-    subtitle: "Readable ELF layout as text · PREVIEW renders the Mermaid image",
+    subtitle: "Readable ELF layout as text | PREVIEW renders the Mermaid image",
     previewable: true,
   },
   overview: {
@@ -252,14 +252,14 @@ function snapshotFrom(payload: AnalysisPayload, budgets: Budget, id: number): Ru
 }
 
 function reportNumber(value: number | undefined): string {
-  return value === undefined ? "—" : String(value);
+  return value === undefined ? "-" : String(value);
 }
 
 function deadlockTraceText(trace: TraceStep[]): string {
   const lines = ["DEADLOCK COUNTEREXAMPLE", ""];
   trace.forEach((step, index) => {
     if (index > 0) {
-      lines.push(`   ── ${step.transition || "(transition)"} ──▶`);
+      lines.push(`   -- ${step.transition || "(transition)"} -->`);
     }
     lines.push(` ${step.state}  t=${step.elapsed || "?"}  M=${step.marking}`);
   });
@@ -282,10 +282,10 @@ function buildMarkdownReport(
     `- Workflow: ${result.workflow_label || "SPEC-FIRST"}`,
     `- Generated: ${new Date().toISOString()}`,
     `- Status: ${result.ok ? (result.partial ? "PARTIAL (resource budget reached)" : "OK") : "FAILED"}`,
-    `- Exit code: ${result.exit_code ?? "—"}`,
+    `- Exit code: ${result.exit_code ?? "-"}`,
     `- Elapsed: ${result.elapsed_ms} ms`,
     `- Budget: max-states ${budgets.maxStates}, timeout ${budgets.timeoutSecs || "off"} s, max-memory ${budgets.maxMemoryMb || "off"} MB`,
-    `- Scheduling policy: ${policy} · tie ${tie}`,
+    `- Scheduling policy: ${policy} | tie ${tie}`,
     "",
     "## Assumptions",
     "",
@@ -312,7 +312,7 @@ function buildMarkdownReport(
       "| --- | --- | ---: | ---: | ---: | ---: |",
       ...sweep.map(
         (entry) =>
-          `| ${entry.label} | ${entry.status} | ${entry.maxWcrt ?? "—"} | ${entry.states} | ${entry.deadlocks} | ${entry.elapsedMs} ms |`,
+          `| ${entry.label} | ${entry.status} | ${entry.maxWcrt ?? "-"} | ${entry.states} | ${entry.deadlocks} | ${entry.elapsedMs} ms |`,
       ),
       "",
     );
@@ -363,7 +363,7 @@ function WcrtChart({ tasks }: { tasks: NonNullable<Metrics["tasks"]> }) {
               <span className="faint">
                 wcrt {wcrt}
                 {deadline > 0 ? ` / d ${deadline}` : ""}
-                {typeof slack === "number" ? ` · slack ${slack}` : ""}
+                {typeof slack === "number" ? ` | slack ${slack}` : ""}
               </span>
             </div>
             <div
@@ -426,14 +426,14 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
     },
     {
       label: "exact",
-      before: String(a.exact ?? "—"),
-      after: String(b.exact ?? "—"),
+      before: String(a.exact ?? "-"),
+      after: String(b.exact ?? "-"),
       regressed: a.exact === true && b.exact === false,
     },
     {
       label: "truncated",
-      before: String(a.truncated ?? "—"),
-      after: String(b.truncated ?? "—"),
+      before: String(a.truncated ?? "-"),
+      after: String(b.truncated ?? "-"),
       regressed: a.truncated === false && b.truncated === true,
     },
     {
@@ -457,7 +457,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
           <div>
             <div className="preview-eyebrow">RUN COMPARISON</div>
             <div className="preview-title">
-              {a.file} · #{a.id} → #{b.id}
+              {a.file} | #{a.id} to #{b.id}
             </div>
           </div>
           <div className="preview-footer-label">red = regression</div>
@@ -481,7 +481,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
                   <td style={{ padding: 6 }}>{row.before}</td>
                   <td style={{ padding: 6, color: row.regressed ? "#ff8a8a" : "#e6f1ff" }}>
                     {row.after}
-                    {row.regressed ? "  ▲" : ""}
+                    {row.regressed ? "  ^" : ""}
                   </td>
                 </tr>
               ))}
@@ -492,11 +492,11 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
                   before !== undefined && after !== undefined && after > before;
                 return (
                   <tr key={`task-${task}`} style={{ borderTop: "1px solid #11243b" }}>
-                    <td style={{ padding: 6, color: "#8ca9c8" }}>wcrt · {task}</td>
+                    <td style={{ padding: 6, color: "#8ca9c8" }}>wcrt | {task}</td>
                     <td style={{ padding: 6 }}>{reportNumber(before)}</td>
                     <td style={{ padding: 6, color: regressed ? "#ff8a8a" : "#e6f1ff" }}>
                       {reportNumber(after)}
-                      {regressed ? "  ▲" : ""}
+                      {regressed ? "  ^" : ""}
                     </td>
                   </tr>
                 );
@@ -569,7 +569,7 @@ function fileName(path: string | null | undefined): string {
 }
 
 function engineTag(engine: { source: string; external_override: boolean }): string {
-  return engine.external_override ? `${engine.source.toUpperCase()}·EXTERNAL` : engine.source.toUpperCase();
+  return engine.external_override ? `${engine.source.toUpperCase()}|EXTERNAL` : engine.source.toUpperCase();
 }
 
 function isBinaryPath(path: string): boolean {
@@ -703,19 +703,19 @@ export default function App() {
     : stageDoc(activeStage, analysis?.docs);
   const binarySummary = binary
     ? activeStage === "overview"
-      ? `${binary.schema || "cfg"} · ${binary.functions} fns · ${binary.roots.length} roots`
+      ? `${binary.schema || "cfg"} | ${binary.functions} fns | ${binary.roots.length} roots`
       : activeStage === "functions"
-        ? `${binary.function_rows.length} functions · click a row to open the CFG`
+        ? `${binary.function_rows.length} functions | click a row to open the CFG`
         : activeStage === "analysis"
-          ? `${analysisModelId(binary)} · ${binary.analysis?.caveats?.length ?? 0} caveats`
+          ? `${analysisModelId(binary)} | ${binary.analysis?.caveats?.length ?? 0} caveats`
           : activeStage === "elf"
-          ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
-          : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
+          ? `${(binary.file_size / 1024).toFixed(1)} KB | ${binary.artifacts_dir}`
+          : `${binary.functions} fns | ${binary.blocks} blocks | ${binary.calls} calls | ${binary.diagnostics} diagnostics`
     : "";
   const summary = isBinary ? binarySummary : stageSummary(activeStage, analysis?.docs);
   const assumptions = isBinary
     ? binary?.warnings.join("\n") ||
-      "elf2tdg loader view → readable CFG → Graphviz preview. Threads/net analysis is pending."
+      "elf2tdg loader view -> readable CFG -> Graphviz preview. Threads/net analysis is pending."
     : analysis?.docs?.assumptions ?? "";
 
   const deadlockSteps = analysis?.deadlock_trace ?? null;
@@ -809,7 +809,7 @@ export default function App() {
   }, []);
 
   const setWindowTitle = (name: string) => {
-    getCurrentWindow().setTitle(`RT-PN  ·  ${name}`).catch(() => undefined);
+    getCurrentWindow().setTitle(`RT-PN  |  ${name}`).catch(() => undefined);
   };
 
   const appendHistory = useCallback((verdict: string, detailText: string) => {
@@ -869,7 +869,7 @@ export default function App() {
             title: "RUN CANCELED",
             body: `canceled after ${result.elapsed_ms} ms`,
           });
-          appendHistory("CANCELED", `${payload.docs.task_count}T · canceled`);
+          appendHistory("CANCELED", `${payload.docs.task_count}T | canceled`);
           return;
         }
         const verdict = !result.ok
@@ -889,19 +889,19 @@ export default function App() {
                 ? "good"
                 : "bad",
         });
-        const budgetLine = `budget   max-states ${budget.maxStates} · timeout ${budget.timeoutSecs || "off"} s · max-memory ${budget.maxMemoryMb || "off"} MB\npolicy   ${policyInfo.label} (${policy}) · tie ${tie}`;
+        const budgetLine = `budget   max-states ${budget.maxStates} | timeout ${budget.timeoutSecs || "off"} s | max-memory ${budget.maxMemoryMb || "off"} MB\npolicy   ${policyInfo.label} (${policy}) | tie ${tie}`;
         const partialLine = result.partial
           ? `\npartial  resource budget reached (exit 5): the state-class graph is an incomplete prefix and metrics stay bounds`
           : "";
         setDetail({
           title: result.ok ? "MODEL READY" : "ANALYSIS FAILED",
           body: result.ok
-            ? `${result.net.places.length} places · ${result.net.transitions.length} transitions\n${result.scg.nodes.length} state classes · ${result.scg.edges.length} edges\n${budgetLine}${partialLine}\n\nText is the primary workbench; PREVIEW opens a graph.`
+            ? `${result.net.places.length} places | ${result.net.transitions.length} transitions\n${result.scg.nodes.length} state classes | ${result.scg.edges.length} edges\n${budgetLine}${partialLine}\n\nText is the primary workbench; PREVIEW opens a graph.`
             : `${result.error}\n\n${budgetLine}`,
         });
         appendHistory(
           verdict,
-          `${payload.docs.task_count}T · ${result.scg.nodes.length}S${result.partial ? " · partial" : ""}`,
+          `${payload.docs.task_count}T | ${result.scg.nodes.length}S${result.partial ? " | partial" : ""}`,
         );
         void describeModel(path, policy, tie)
           .then((description) => setDescribeText(description))
@@ -1139,19 +1139,19 @@ export default function App() {
         setStatus({ text: "ELF READY", tone: "violet" });
         const warningBlock =
           payload.warnings.length > 0
-            ? `\n\nwarnings\n${payload.warnings.map((warning) => `  · ${warning}`).join("\n")}`
+            ? `\n\nwarnings\n${payload.warnings.map((warning) => `  | ${warning}`).join("\n")}`
             : "";
         setDetail({
           title: "ELF WORKFLOW",
           body:
             `ELF      ${fileName(payload.elf_path)} (${Math.round(payload.file_size / 1024)} KB)\n` +
-            `CFG      ${payload.functions} functions · ${payload.blocks} blocks · ${payload.calls} calls\n` +
+            `CFG      ${payload.functions} functions | ${payload.blocks} blocks | ${payload.calls} calls\n` +
             `PREVIEW  ${payload.cfg_svg ? "Graphviz SVG" : "interactive graph fallback"}\n` +
             `ARTIFACTS ${payload.artifacts_dir}${warningBlock}`,
         });
         appendHistory(
           "ELF",
-          `CFG ${payload.functions} fn · ${payload.calls} calls`,
+          `CFG ${payload.functions} fn | ${payload.calls} calls`,
         );
       } catch (reason) {
         setBusy(false);
@@ -1177,7 +1177,7 @@ export default function App() {
           title: "FUNCTION CFG",
           body:
             `${cfg.name || selector}\n` +
-            `${cfg.address || "—"} · ${cfg.blocks.length} blocks · ${cfg.edges.length} edges\n` +
+            `${cfg.address || "-"} | ${cfg.blocks.length} blocks | ${cfg.edges.length} edges\n` +
             `${cfg.source?.file ? `${cfg.source.file}:${cfg.source.line ?? "?"}` : "no source mapping"}`,
         });
       } catch (reason) {
@@ -1254,7 +1254,7 @@ export default function App() {
       setFillBusy(false);
       setDetail({
         title: "TIMING FILLED",
-        body: `filled ${filled.filled} task(s) · ${filled.remaining_pending} pending remaining\n\n${filled.path}\n\nRe-analysing the patched source.`,
+        body: `filled ${filled.filled} task(s) | ${filled.remaining_pending} pending remaining\n\n${filled.path}\n\nRe-analysing the patched source.`,
       });
       await runSpec(filled.path, false);
     } catch (reason) {
@@ -1381,7 +1381,7 @@ export default function App() {
         title: "HISTORICAL RUN",
         body:
           `run ${runId}\n${restored.project.elf_path ?? ""}\n\n` +
-          "A stored run payload was loaded from the workspace — no re-analysis was run.",
+          "A stored run payload was loaded from the workspace - no re-analysis was run.",
       });
     } catch (reason) {
       setError(String(reason));
@@ -1410,13 +1410,13 @@ export default function App() {
       const rootB = roots(b.payload);
       const names = Array.from(new Set([...rootA.keys(), ...rootB.keys()])).sort();
       const lines = [
-        `A  ${new Date(runs[0].at * 1000).toLocaleString()} · ${runs[0].profile || "no profile"}`,
-        `B  ${new Date(runs[1].at * 1000).toLocaleString()} · ${runs[1].profile || "no profile"}`,
+        `A  ${new Date(runs[0].at * 1000).toLocaleString()} | ${runs[0].profile || "no profile"}`,
+        `B  ${new Date(runs[1].at * 1000).toLocaleString()} | ${runs[1].profile || "no profile"}`,
         "",
-        `functions  ${a.payload.functions} → ${b.payload.functions}`,
-        `instructions  ${a.payload.coverage?.total_instructions ?? "?"} → ${b.payload.coverage?.total_instructions ?? "?"}`,
+        `functions  ${a.payload.functions} -> ${b.payload.functions}`,
+        `instructions  ${a.payload.coverage?.total_instructions ?? "?"} -> ${b.payload.coverage?.total_instructions ?? "?"}`,
         "",
-        "WCET roots (A → B, Δ B−A):",
+        "WCET roots (A -> B, Delta B-A):",
       ];
       for (const name of names) {
         const cyclesA = rootA.get(name) ?? null;
@@ -1424,7 +1424,7 @@ export default function App() {
         const delta =
           cyclesA !== null && cyclesB !== null ? cyclesB - cyclesA : null;
         lines.push(
-          `  ${name}: ${cyclesA ?? "—"} → ${cyclesB ?? "—"}` +
+          `  ${name}: ${cyclesA ?? "-"} -> ${cyclesB ?? "-"}` +
             (delta === null ? "" : ` (${delta > 0 ? "+" : ""}${delta.toFixed(1)} cy)`),
         );
       }
@@ -1454,7 +1454,7 @@ export default function App() {
         title: "PROJECT RESTORED",
         body:
           `${restored.project.elf_path ?? ""}\n\n` +
-          "Cached text results loaded from the SQLite workspace — no re-analysis was run.",
+          "Cached text results loaded from the SQLite workspace - no re-analysis was run.",
       });
     } catch (reason) {
       setError(String(reason));
@@ -1545,10 +1545,10 @@ export default function App() {
         }
         setMermaidPreview({
           chart: layout,
-          title: `${fileName(binary.elf_path)} · ELF LAYOUT`,
+          title: `${fileName(binary.elf_path)} | ELF LAYOUT`,
           footer:
             `Mermaid source ${(layout.length / 1024).toFixed(1)} KB ` +
-            `(limit ${(ELF_PREVIEW_CHAR_LIMIT / 1024).toFixed(0)} KB) · rendered locally`,
+            `(limit ${(ELF_PREVIEW_CHAR_LIMIT / 1024).toFixed(0)} KB) | rendered locally`,
         });
         return;
       }
@@ -1596,7 +1596,7 @@ export default function App() {
   const displayName = fileName(displayPath);
   const workflowLabel =
     workflow === "binary"
-      ? "BINARY · ELF"
+      ? "BINARY | ELF"
       : workflow === "spec"
         ? analysis?.docs?.workflow ?? "SPEC-FIRST"
         : "NO WORKFLOW";
@@ -1629,7 +1629,7 @@ export default function App() {
               <span>
                 {cli
                   ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""}`
-                  : "PTPN NOT FOUND · just engines"}
+                  : "PTPN NOT FOUND | just engines"}
               </span>
             </span>
             <span className="engine-label" title={elf2tdg?.path ?? undefined}>
@@ -1637,7 +1637,7 @@ export default function App() {
               <span>
                 {elf2tdg
                   ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""}`
-                  : "ELF2TDG NOT FOUND · just engines"}
+                  : "ELF2TDG NOT FOUND | just engines"}
               </span>
             </span>
           </div>
@@ -1652,7 +1652,7 @@ export default function App() {
           <section className="chooser-recent">
             <div className="chooser-section-head">
               <div>
-                <div className="sem-eyebrow">RECENT PROJECTS · SQLITE WORKSPACE</div>
+                <div className="sem-eyebrow">RECENT PROJECTS | SQLITE WORKSPACE</div>
                 <h2>Open a cached analysis</h2>
               </div>
               <span className="faint">{workspaceProjects.length} indexed</span>
@@ -1667,15 +1667,15 @@ export default function App() {
                   >
                     <b>{project.name}</b>
                     <small>
-                      {project.arch || "—"} · {project.functions ?? "?"} functions ·{" "}
-                      {project.run_count ?? 0} runs · {project.profile || "no board profile"}
+                      {project.arch || "-"} | {project.functions ?? "?"} functions |{" "}
+                      {project.run_count ?? 0} runs | {project.profile || "no board profile"}
                     </small>
                     <span className="mono faint">
                       {project.latest_wcet_root
-                        ? `WCET ${project.latest_wcet_root} · ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
+                        ? `WCET ${project.latest_wcet_root} | ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
                         : "no WCET result in the last run"}
                       {project.last_opened
-                        ? ` · opened ${new Date(project.last_opened * 1000).toLocaleDateString()}`
+                        ? ` | opened ${new Date(project.last_opened * 1000).toLocaleDateString()}`
                         : ""}
                     </span>
                   </button>
@@ -1688,7 +1688,7 @@ export default function App() {
                       void compareProjectRuns(project);
                     }}
                   >
-                    Δ
+                    Delta
                   </button>
                   <button
                     className="project-delete"
@@ -1712,7 +1712,7 @@ export default function App() {
                       }
                     }}
                   >
-                    ×
+                    x
                   </button>
                   {project.last_runs && project.last_runs.length > 0 && (
                     <div className="project-runs mono faint">
@@ -1726,7 +1726,7 @@ export default function App() {
                             if (run.run_id) void openWorkspaceRun(project.id, run.run_id);
                           }}
                         >
-                          {new Date(run.at * 1000).toLocaleTimeString()} ·{" "}
+                          {new Date(run.at * 1000).toLocaleTimeString()} |{" "}
                           {run.wcet_root
                             ? `${run.wcet_root} ${run.wcet_cycles?.toFixed(0) ?? "?"} cy`
                             : "no WCET"}
@@ -1741,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.4.3 · timing & profile in ANALYSIS · Two independent workspaces.
+          RT-PN 0.4.4 | English-only UI | Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1803,9 +1803,9 @@ export default function App() {
           <div className="workflow-name">{workflowLabel}</div>
           <div className="workflow-hint">
             {workflow === "binary"
-              ? "ELF → READABLE LAYOUT → CFG + PREVIEW"
+              ? "ELF -> READABLE LAYOUT -> CFG + PREVIEW"
               : workflow === "spec"
-                ? "RTSL / TDG → PTPN → SCG"
+                ? "RTSL / TDG -> PTPN -> SCG"
                 : "Choose a workflow to begin"}
           </div>
           <div className="stack">
@@ -1829,7 +1829,7 @@ export default function App() {
                   body: "Choose a workflow to begin.",
                 });
                 getCurrentWindow()
-                  .setTitle("RT-PN  ·  Real-Time Petri Workbench")
+                  .setTitle("RT-PN  |  Real-Time Petri Workbench")
                   .catch(() => undefined);
               }}
             >
@@ -1884,7 +1884,7 @@ export default function App() {
               <input
                 className="profile-input"
                 type="text"
-                placeholder="filter functions…"
+                placeholder="filter functions..."
                 value={binaryFunctionQuery}
                 onChange={(event) => setBinaryFunctionQuery(event.target.value)}
               />
@@ -1913,7 +1913,7 @@ export default function App() {
                         }}
                       >
                         <span>{row.name || row.address || selector}</span>
-                        <small>{row.kind ?? "fn"} · {row.blocks}b</small>
+                        <small>{row.kind ?? "fn"} | {row.blocks}b</small>
                       </button>
                     );
                   })}
@@ -1946,7 +1946,7 @@ export default function App() {
                   }))
                 }
               >
-                <option value="">cpu · auto-detect</option>
+                <option value="">cpu | auto-detect</option>
                 {["cortex-m4", "cortex-m7", "cortex-m33", "riscv32", "aarch64", "x86-64"].map(
                   (cpu) => (
                     <option key={cpu} value={cpu}>
@@ -1966,7 +1966,7 @@ export default function App() {
                   }))
                 }
               >
-                <option value="">board profile · none</option>
+                <option value="">board profile | none</option>
                 {profiles.map((profile) => (
                   <option key={profile.path} value={profile.path}>
                     {profile.name}
@@ -1976,7 +1976,7 @@ export default function App() {
               <input
                 className="profile-input"
                 type="text"
-                placeholder="frequency · e.g. 168MHz"
+                placeholder="frequency | e.g. 168MHz"
                 value={binaryOptions.freq ?? ""}
                 disabled={busy}
                 onChange={(event) =>
@@ -2003,7 +2003,7 @@ export default function App() {
                       configName.trim() ||
                       [binaryOptions.cpu, binaryOptions.freq]
                         .filter(Boolean)
-                        .join(" · ") ||
+                        .join(" | ") ||
                       "default";
                     setBinaryConfigs((previous) => [
                       ...previous.filter((configuration) => configuration.name !== name),
@@ -2037,7 +2037,7 @@ export default function App() {
                             title: "RUN CONFIGURATION",
                             body:
                               `${configuration.name}\n` +
-                              `cpu ${configuration.cpu ?? "auto"} · freq ${configuration.freq ?? "default"} · ` +
+                              `cpu ${configuration.cpu ?? "auto"} | freq ${configuration.freq ?? "default"} | ` +
                               `profile ${configuration.board_profile ?? "none"}\n\n` +
                               "Press RUN ANALYSIS in the toolbar to apply it.",
                           });
@@ -2051,7 +2051,7 @@ export default function App() {
                             (configuration.board_profile ?? "").split(/[\\/]/).pop(),
                           ]
                             .filter(Boolean)
-                            .join(" · ")}
+                            .join(" | ")}
                         </small>
                       </button>
                       <button
@@ -2063,7 +2063,7 @@ export default function App() {
                           )
                         }
                       >
-                        ×
+                        x
                       </button>
                     </div>
                   ))}
@@ -2137,15 +2137,15 @@ export default function App() {
                 <div className={`side-verdict ${verdict.tone}`}>{verdict.text}</div>
                 <div className="side-stats">
                   <span>
-                    <b>{analysis?.result.ok ? analysis.result.scg.nodes.length : "—"}</b>
+                    <b>{analysis?.result.ok ? analysis.result.scg.nodes.length : "-"}</b>
                     <small>states</small>
                   </span>
                   <span>
-                    <b>{analysis?.result.ok ? formatNumber(maxWcrt) : "—"}</b>
+                    <b>{analysis?.result.ok ? formatNumber(maxWcrt) : "-"}</b>
                     <small>wcrt</small>
                   </span>
                   <span>
-                    <b>{analysis?.result.ok ? deadlockCount : "—"}</b>
+                    <b>{analysis?.result.ok ? deadlockCount : "-"}</b>
                     <small>deadlocks</small>
                   </span>
                   <span>
@@ -2185,11 +2185,11 @@ export default function App() {
                   setDescribeText("");
                 }}
               >
-                <option value="fifo">tie · fifo</option>
-                <option value="arbitrary">tie · arbitrary</option>
+                <option value="fifo">tie | fifo</option>
+                <option value="arbitrary">tie | arbitrary</option>
               </select>
               <div className="faint">
-                {policyInfo.family} · {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
+                {policyInfo.family} | {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
               </div>
               <div className="budget-row">
                 {(
@@ -2246,42 +2246,42 @@ export default function App() {
           <Section title="ARTIFACTS" />
           {isBinary ? (
             <div className="artifact-list">
-              <Artifact label="SCHEMA" value={binary?.schema || "—"} />
+              <Artifact label="SCHEMA" value={binary?.schema || "-"} />
               <Artifact
                 label="FN"
                 value={
                   binary
-                    ? `${binary.functions} · ${binary.blocks} BB · ${binary.calls} calls`
-                    : "—"
+                    ? `${binary.functions} | ${binary.blocks} BB | ${binary.calls} calls`
+                    : "-"
                 }
               />
               <Artifact
                 label="ROOTS"
-                value={binary ? `${binary.roots.length} · ${binary.concurrency.length} spawns` : "—"}
+                value={binary ? `${binary.roots.length} | ${binary.concurrency.length} spawns` : "-"}
               />
               <Artifact
                 label="DIAG"
-                value={binary ? String(binary.diagnostics) : "—"}
+                value={binary ? String(binary.diagnostics) : "-"}
               />
               <Artifact
                 label="IMG"
-                value={binary ? (binary.cfg_svg ? "Graphviz SVG" : "graph fallback") : "—"}
+                value={binary ? (binary.cfg_svg ? "Graphviz SVG" : "graph fallback") : "-"}
               />
-              <Artifact label="ART" value={binary ? binary.artifacts_dir : "—"} />
+              <Artifact label="ART" value={binary ? binary.artifacts_dir : "-"} />
             </div>
           ) : analysis?.result.ok ? (
             <div className="artifact-list">
               <Artifact
                 label="DAG"
-                value={`${analysis.docs.task_count}T · ${analysis.docs.dag_edge_count}E`}
+                value={`${analysis.docs.task_count}T | ${analysis.docs.dag_edge_count}E`}
               />
               <Artifact
                 label="PTPN"
-                value={`${analysis.result.net.places.length}P · ${analysis.result.net.transitions.length}T · ${analysis.result.net.arcs.length}A`}
+                value={`${analysis.result.net.places.length}P | ${analysis.result.net.transitions.length}T | ${analysis.result.net.arcs.length}A`}
               />
               <Artifact
                 label="SCG"
-                value={`${analysis.result.scg.nodes.length}S · ${analysis.result.scg.edges.length}E`}
+                value={`${analysis.result.scg.nodes.length}S | ${analysis.result.scg.edges.length}E`}
               />
               <Artifact label="RUN" value={`${analysis.result.elapsed_ms} ms`} />
             </div>
@@ -2304,7 +2304,7 @@ export default function App() {
                 disabled={!currentPath || busy || allocateBusy}
                 onClick={() => void runAllocation()}
               >
-                <Cpu size={13} /> {allocateBusy ? "SEARCHING…" : "ALLOCATE CORES"}
+                <Cpu size={13} /> {allocateBusy ? "SEARCHING..." : "ALLOCATE CORES"}
               </button>
               {allocation ? (
                 (() => {
@@ -2317,19 +2317,19 @@ export default function App() {
                       task?: string;
                       core?: number;
                     }>;
-                    return assignment.map((item) => `${item.task}→c${item.core}`).join(" ");
+                    return assignment.map((item) => `${item.task}->c${item.core}`).join(" ");
                   };
                   return (
                     <div style={{ fontSize: 10, display: "grid", gap: 4 }}>
                       <div className="faint">
-                        {String(search.strategy ?? "?")} · domain{" "}
-                        {String(search.domain_size ?? "?")} · evaluated{" "}
-                        {String(search.evaluated ?? "?")} · feasible{" "}
+                        {String(search.strategy ?? "?")} | domain{" "}
+                        {String(search.domain_size ?? "?")} | evaluated{" "}
+                        {String(search.evaluated ?? "?")} | feasible{" "}
                         {String(search.feasible_count ?? "?")}
                       </div>
                       {best && (
                         <div className="mono">
-                          best {assignmentText(best)} · wcrt {String(best.max_wcrt ?? "?")} ·
+                          best {assignmentText(best)} | wcrt {String(best.max_wcrt ?? "?")} |
                           load {String(best.max_core_load ?? "?")}
                         </div>
                       )}
@@ -2408,7 +2408,7 @@ export default function App() {
                   {pending.map((measurement) => (
                     <div key={measurement.task} style={{ marginTop: 8, fontSize: 11 }}>
                       <div className="mono faint">
-                        {measurement.task} · line {measurement.line ?? "?"} · expected{" "}
+                        {measurement.task} | line {measurement.line ?? "?"} | expected{" "}
                         {measurement.expected_segments ?? "?"} intervals
                       </div>
                       <input
@@ -2479,7 +2479,7 @@ export default function App() {
               <span>
                 {cli
                   ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""} ${cli.path}`
-                  : "PTPN NOT FOUND · just engines"}
+                  : "PTPN NOT FOUND | just engines"}
               </span>
             </div>
             <div className="engine-label" title={elf2tdg?.path ?? undefined}>
@@ -2487,10 +2487,10 @@ export default function App() {
               <span>
                 {elf2tdg
                   ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""} ${elf2tdg.path}`
-                  : "ELF2TDG NOT FOUND · just engines"}
+                  : "ELF2TDG NOT FOUND | just engines"}
               </span>
             </div>
-            <div className="brand-foot">RT-PN · NATIVE RUST WORKBENCH</div>
+            <div className="brand-foot">RT-PN | NATIVE RUST WORKBENCH</div>
           </div>
         </div>
       </aside>
@@ -2518,7 +2518,7 @@ export default function App() {
                   <div className="stage-subtitle">{STAGES[activeStage].subtitle}</div>
                 </div>
                 <div className="stage-actions">
-                  <span className="stage-search-hint">⌘/Ctrl+F search</span>
+                  <span className="stage-search-hint">Ctrl/Ctrl+F search</span>
                   <button className="btn small" onClick={() => void copyStage()}>
                     <Copy size={12} /> COPY
                   </button>
@@ -2538,7 +2538,7 @@ export default function App() {
                     setDetail({
                       title: "PRESET APPLIED",
                       body:
-                        `CPU ${cpu} · ${freq}\n\n` +
+                        `CPU ${cpu} | ${freq}\n\n` +
                         "Press RUN ANALYSIS in the toolbar to rebuild the analysis with this configuration.",
                     });
                   }}
@@ -2548,7 +2548,7 @@ export default function App() {
                   doc={
                     binary.elf_view.length > ELF_TEXT_CHAR_LIMIT
                       ? `${binary.elf_view.slice(0, ELF_TEXT_CHAR_LIMIT)}\n\n` +
-                        `… layout truncated at ${(ELF_TEXT_CHAR_LIMIT / 1024).toFixed(0)} KB. ` +
+                        `... layout truncated at ${(ELF_TEXT_CHAR_LIMIT / 1024).toFixed(0)} KB. ` +
                         `Full artifact: ${binary.artifacts_dir}\\${fileName(binary.elf_path).replace(/\.[^.]+$/, "")}.elf.mmd`
                       : binary.elf_view
                   }
@@ -2599,7 +2599,7 @@ export default function App() {
                         title: "WCET LONGEST PATH",
                         body:
                           `${selector}\n${path.length} blocks highlighted in the CFG\n` +
-                          "Static CFG longest-path estimate — not a hardware proof.",
+                          "Static CFG longest-path estimate - not a hardware proof.",
                       });
                     }}
                   />
@@ -2656,7 +2656,7 @@ export default function App() {
               ) : (
                 <div className="empty-stage">
                   <Network size={24} />
-                  <div>{busy ? "Analysis is running…" : "NO DATA IN THIS STAGE"}</div>
+                  <div>{busy ? "Analysis is running..." : "NO DATA IN THIS STAGE"}</div>
                   <span>
                     {busy
                       ? "The elf2tdg loader is extracting the ELF and CFG."
@@ -2714,9 +2714,9 @@ export default function App() {
         </span>
         <span className="status-right">
           {analysis?.result.ok
-            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · ${policyInfo.id} · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s${deadlockCount > 0 ? ` · ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
+            ? `${analysis.result.scg.nodes.length} state classes | ${analysis.result.elapsed_ms} ms | ${policyInfo.id} | budget ${budget.maxStates} states / ${budget.timeoutSecs || "inf"} s${deadlockCount > 0 ? ` | ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
             : isBinary
-              ? "elf2tdg artifacts · analysis backend pending"
+              ? "elf2tdg artifacts | analysis backend pending"
               : "text-first workbench"}
         </span>
       </footer>
@@ -2744,7 +2744,7 @@ export default function App() {
           <div className="mermaid-dialog" onClick={(event) => event.stopPropagation()}>
             <header className="mermaid-head">
               <div>
-                <div className="sem-eyebrow">PREVIEW · MERMAID</div>
+                <div className="sem-eyebrow">PREVIEW | MERMAID</div>
                 <h3>{mermaidPreview.title}</h3>
               </div>
               <button className="btn small" onClick={() => setMermaidPreview(null)}>
@@ -2832,7 +2832,7 @@ function Hub({
       </div>
       <div className="hub-cards">
         <section className="hub-card spec">
-          <div className="hub-kicker">01 · RTSL / TDG → PTPN → SCG</div>
+          <div className="hub-kicker">01 | RTSL / TDG to PTPN to SCG</div>
           <h2 className="accent">Scheduling analysis</h2>
           <p>
             Model-first, timed and prioritized. Lower a specification to a
@@ -2854,7 +2854,7 @@ function Hub({
           </div>
         </section>
         <section className="hub-card binary">
-          <div className="hub-kicker">02 · ELF → CFG</div>
+          <div className="hub-kicker">02 | ELF to CFG</div>
           <h2 className="violet">Binary analysis</h2>
           <p>
             Code-first static inspection: load an ELF and read its layout and
@@ -2885,6 +2885,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

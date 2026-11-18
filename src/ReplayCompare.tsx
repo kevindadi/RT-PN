@@ -43,7 +43,7 @@ function LaneMarking({ step, previous }: { step: ReplayStep; previous?: ReplaySt
               <i key={slot} />
             ))}
           </span>
-          <span className="cmp-count">×{place.tokens}</span>
+          <span className="cmp-count">x{place.tokens}</span>
         </span>
       ))}
     </div>
@@ -136,7 +136,7 @@ export function ReplayCompare({
         target,
         format === "html" ? buildCompareHtml(payload) : JSON.stringify(payload, null, 2),
       );
-      setExportNote(`saved · ${target}`);
+      setExportNote(`saved | ${target}`);
     } catch (reason) {
       setExportNote(String(reason));
     } finally {
@@ -153,7 +153,7 @@ export function ReplayCompare({
           <span className="sem-badge">{lanes.length} policies</span>
           <span className="sem-badge">tie {tie}</span>
           <span className="sem-badge">
-            bounded {maxStates.toLocaleString()} states · {timeoutSecs || "∞"} s each
+            bounded {maxStates.toLocaleString()} states | {timeoutSecs || "inf"} s each
           </span>
         </div>
         <div className="replay-export-row">
@@ -212,7 +212,7 @@ export function ReplayCompare({
 
       {lanes.length === 0 ? (
         <div className="faint" style={{ padding: "18px 4px" }}>
-          {busy ? "running the selected policies…" : "select policies and run the comparison"}
+          {busy ? "running the selected policies..." : "select policies and run the comparison"}
         </div>
       ) : (
         <>
@@ -224,7 +224,7 @@ export function ReplayCompare({
                 setIndex(0);
               }}
             >
-              ⏮
+              FIRST
             </button>
             <button
               className="btn small"
@@ -234,7 +234,7 @@ export function ReplayCompare({
                 setIndex((current) => Math.max(0, current - 1));
               }}
             >
-              ◀
+              PREV
             </button>
             <button className="btn small accent" onClick={() => setPlaying((current) => !current)}>
               {playing ? "PAUSE" : "PLAY"}
@@ -247,7 +247,7 @@ export function ReplayCompare({
                 setIndex((current) => Math.min(last, current + 1));
               }}
             >
-              ▶
+              NEXT
             </button>
             <button
               className="btn small"
@@ -257,7 +257,7 @@ export function ReplayCompare({
                 setIndex(last);
               }}
             >
-              ⏭
+              LAST
             </button>
             <input
               className="replay-range"
@@ -278,9 +278,9 @@ export function ReplayCompare({
               value={speed}
               onChange={(event) => setSpeed(Number(event.target.value))}
             >
-              <option value={0.5}>0.5×</option>
-              <option value={1}>1×</option>
-              <option value={2}>2×</option>
+              <option value={0.5}>0.5x</option>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
             </select>
           </div>
 
@@ -309,7 +309,7 @@ export function ReplayCompare({
                         <span className="sem-eyebrow">fired</span>
                         <div className="math cmp-fired">{step.transition || "(initial state)"}</div>
                         <div className="mono cmp-step-meta">
-                          {step.state} · t = {step.elapsed || "0"} · step {laneIndex + 1}/
+                          {step.state} | t = {step.elapsed || "0"} | step {laneIndex + 1}/
                           {lane.steps.length}
                         </div>
                       </div>
