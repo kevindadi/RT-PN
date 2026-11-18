@@ -1,0 +1,441 @@
+{
+  "graph": {
+    "name": "MultiLanePipeline20T4C1L"
+  },
+  "configuration": {
+    "num_cpus": 4,
+    "cores_per_cpu": 1,
+    "shared_locks": [
+      "mutex0"
+    ],
+    "policy": "fixed",
+    "task_place_capacity": 1,
+    "start": [
+      {
+        "task": "T00",
+        "tokens": 1
+      },
+      {
+        "task": "T10",
+        "tokens": 1
+      }
+    ],
+    "end": [
+      "T19"
+    ],
+    "periodic": [
+      {
+        "task": "T00",
+        "period": 60
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "T00",
+      "type": "task",
+      "priority": 10,
+      "core": 0,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T01",
+      "type": "task",
+      "priority": 11,
+      "core": 0,
+      "time": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "locks": [
+        "mutex0"
+      ]
+    },
+    {
+      "id": "T02",
+      "type": "task",
+      "priority": 12,
+      "core": 1,
+      "time": [
+        [
+          3,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T03",
+      "type": "task",
+      "priority": 13,
+      "core": 1,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T04",
+      "type": "task",
+      "priority": 14,
+      "core": 0,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T05",
+      "type": "task",
+      "priority": 15,
+      "core": 1,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T06",
+      "type": "task",
+      "priority": 16,
+      "core": 0,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T07",
+      "type": "task",
+      "priority": 17,
+      "core": 1,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T08",
+      "type": "task",
+      "priority": 18,
+      "core": 0,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T09",
+      "type": "task",
+      "priority": 19,
+      "core": 1,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "F_L00",
+      "type": "fork"
+    },
+    {
+      "id": "J_L00",
+      "type": "join"
+    },
+    {
+      "id": "T10",
+      "type": "task",
+      "priority": 20,
+      "core": 2,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T11",
+      "type": "task",
+      "priority": 21,
+      "core": 2,
+      "time": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "locks": [
+        "mutex0"
+      ]
+    },
+    {
+      "id": "T12",
+      "type": "task",
+      "priority": 22,
+      "core": 3,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T13",
+      "type": "task",
+      "priority": 23,
+      "core": 3,
+      "time": [
+        [
+          2,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T14",
+      "type": "task",
+      "priority": 24,
+      "core": 2,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T15",
+      "type": "task",
+      "priority": 25,
+      "core": 3,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T16",
+      "type": "task",
+      "priority": 26,
+      "core": 2,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T17",
+      "type": "task",
+      "priority": 27,
+      "core": 3,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T18",
+      "type": "task",
+      "priority": 28,
+      "core": 2,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "F_L01",
+      "type": "fork"
+    },
+    {
+      "id": "J_L01",
+      "type": "join"
+    },
+    {
+      "id": "J_GLOBAL",
+      "type": "join"
+    },
+    {
+      "id": "T19",
+      "type": "task",
+      "priority": 29,
+      "core": 3,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    }
+  ],
+  "edges": [
+    {
+      "source": "T00",
+      "target": "F_L00"
+    },
+    {
+      "source": "F_L00",
+      "target": "T01"
+    },
+    {
+      "source": "F_L00",
+      "target": "T02"
+    },
+    {
+      "source": "T01",
+      "target": "J_L00"
+    },
+    {
+      "source": "T02",
+      "target": "J_L00"
+    },
+    {
+      "source": "J_L00",
+      "target": "T03"
+    },
+    {
+      "source": "T03",
+      "target": "T04"
+    },
+    {
+      "source": "T04",
+      "target": "T05"
+    },
+    {
+      "source": "T05",
+      "target": "T06"
+    },
+    {
+      "source": "T06",
+      "target": "T07"
+    },
+    {
+      "source": "T07",
+      "target": "T08"
+    },
+    {
+      "source": "T08",
+      "target": "T09"
+    },
+    {
+      "source": "T09",
+      "target": "J_GLOBAL"
+    },
+    {
+      "source": "T10",
+      "target": "F_L01"
+    },
+    {
+      "source": "F_L01",
+      "target": "T11"
+    },
+    {
+      "source": "F_L01",
+      "target": "T12"
+    },
+    {
+      "source": "T11",
+      "target": "J_L01"
+    },
+    {
+      "source": "T12",
+      "target": "J_L01"
+    },
+    {
+      "source": "J_L01",
+      "target": "T13"
+    },
+    {
+      "source": "T13",
+      "target": "T14"
+    },
+    {
+      "source": "T14",
+      "target": "T15"
+    },
+    {
+      "source": "T15",
+      "target": "T16"
+    },
+    {
+      "source": "T16",
+      "target": "T17"
+    },
+    {
+      "source": "T17",
+      "target": "T18"
+    },
+    {
+      "source": "T18",
+      "target": "J_GLOBAL"
+    },
+    {
+      "source": "J_GLOBAL",
+      "target": "T19"
+    }
+  ]
+}

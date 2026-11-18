@@ -24,13 +24,14 @@ const ptpn = sidecar("ptpn");
 ensureDir(paths.e2e);
 
 const elfFixture = path.join(
-  paths.elf2tdgEngine,
+  paths.root,
   "examples",
+  "elf2tdg",
   "rust-concurrency",
   "artifacts",
   "rust-concurrency-analysis.elf",
 );
-const ptpnExample = path.join(paths.ptpnEngine, "example", "motivating-examples", "hw.json");
+const ptpnExample = path.join(paths.root, "examples", "ptpn", "motivating-examples", "hw.json");
 
 function requireFile(file) {
   if (!exists(file)) throw new Error(`expected output was not produced: ${file}`);
@@ -133,8 +134,9 @@ try {
 
   // ---- 5. pending `measured by llm` + ptpn fill --------------------------
   const pendingModel = path.join(
-    paths.ptpnEngine,
-    "example",
+    paths.root,
+    "examples",
+    "ptpn",
     "introduction",
     "demo.rtsl",
   );
@@ -173,7 +175,7 @@ try {
       ptpn,
       [
         "describe",
-        "-f", path.join(paths.ptpnEngine, "example", "introduction", "locked.rtsl"),
+        "-f", path.join(paths.root, "examples", "ptpn", "introduction", "locked.rtsl"),
         "--policy", "fixed_prior_with_restart",
         "--tie", "arbitrary",
         "--diagnostics", "json",

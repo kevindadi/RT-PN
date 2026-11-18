@@ -97,6 +97,11 @@ export function describeModel(
   return invoke<string>("describe_model", { path, policy: policy ?? null, tie: tie ?? null });
 }
 
+/** Base directory holding the packaged examples (`examples/ptpn`, `examples/elf2tdg`). */
+export function exampleBase(): Promise<string> {
+  return invoke<string>("example_base");
+}
+
 export async function pickProject(): Promise<string | null> {
   const selected = await open({
     multiple: false,

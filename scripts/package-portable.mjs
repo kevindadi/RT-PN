@@ -51,24 +51,18 @@ copyInto(
   path.join("bin", bin("elf2tdg")),
 );
 
-copyInto(
-  path.join(paths.ptpnEngine, "example", "motivating-examples", "hw.json"),
-  path.join("example", "motivating-examples", "hw.json"),
-);
-copyInto(
-  path.join(paths.ptpnEngine, "example", "introduction", "demo-filled.rtsl"),
-  path.join("example", "introduction", "demo-filled.rtsl"),
-);
-copyInto(
-  path.join(
-    paths.elf2tdgEngine,
-    "examples",
-    "rust-concurrency",
-    "artifacts",
-    "rust-concurrency-analysis.elf",
-  ),
-  path.join("example", "binary", "rust-concurrency-analysis.elf"),
-);
+function copyTree(source, relativeTarget) {
+  if (!exists(source)) {
+    console.warn(`warning: example tree not found, skipping: ${source}`);
+    return;
+  }
+  const target = path.join(paths.portable, relativeTarget);
+  fs.rmSync(target, { recursive: true, force: true });
+  fs.cpSync(source, target, { recursive: true });
+}
+
+copyTree(paths.ptpnExamples, path.join("examples", "ptpn"));
+copyTree(paths.elf2tdgExamples, path.join("examples", "elf2tdg"));
 
 const launcher = [
   "@echo off",
@@ -96,7 +90,8 @@ const readme = [
   "  rt-pn.exe          Tauri/React desktop workbench",
   "  bin\\ptpn.exe       real-time scheduling analyzer (PTPN / WCRT / deadlock)",
   "  bin\\elf2tdg.exe    ELF -> Task Dependency Graph extractor",
-  "  example\\           TDG JSON, RTSL samples and a Cortex-M ELF fixture",
+  "  examples\\ptpn      RTSL/TDG samples (diagnostics, benchmarks, introduction)",
+  "  examples\\elf2tdg   ELF fixtures and elf2tdg sample artifacts",
   "  versions.json      exact engine commits and tool versions used for this build",
   "",
   "The launcher points PTPN_BIN/ELF2TDG_BIN at the bundled CLIs and keeps the",

@@ -34,6 +34,7 @@ import {
   cancelAnalysis,
   describeModel,
   engineHealth,
+  exampleBase,
   fillTimings,
   pendingTimings,
   pickElf,
@@ -533,10 +534,6 @@ function fileName(path: string | null | undefined): string {
 
 function engineTag(engine: { source: string; external_override: boolean }): string {
   return engine.external_override ? `${engine.source.toUpperCase()}·EXTERNAL` : engine.source.toUpperCase();
-}
-
-function engineDirectory(path: string): string {
-  return path.replace(/[\\/][^\\/]+$/, "");
 }
 
 function isBinaryPath(path: string): boolean {
@@ -1200,14 +1197,32 @@ export default function App() {
   openPathRef.current = openPath;
 
   const openExample = useCallback(async () => {
-    if (!cli) {
-      setError("ptpn CLI not found; build it with `just engines` or set PTPN_BIN.");
-      return;
+    try {
+      const base = await exampleBase();
+      if (isBinary) {
+        await runBinary(
+          `${base}/elf2tdg/rust-concurrency/artifacts/rust-concurrency-analysis.elf`,
+          true,
+        );
+      } else {
+        await runSpec(`${base}/ptpn/motivating-examples/hw.json`, true);
+      }
+    } catch (reason) {
+      setError(String(reason));
     }
-    const cliDirectory = engineDirectory(cli.path);
-    const candidate = `${cliDirectory}/../example/motivating-examples/hw.json`;
-    await runSpec(candidate, true);
-  }, [cli, runSpec]);
+  }, [isBinary, runBinary, runSpec]);
+
+  const openElfExample = useCallback(async () => {
+    try {
+      const base = await exampleBase();
+      await runBinary(
+        `${base}/elf2tdg/rust-concurrency/artifacts/rust-concurrency-analysis.elf`,
+        true,
+      );
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, [runBinary]);
 
   const copyStage = async () => {
     try {
@@ -1321,9 +1336,16 @@ export default function App() {
                 : "Choose a workflow to begin"}
           </div>
           <div className="stack">
-            <button className="btn wide" onClick={() => void openBinaryDialog()}>
-              <Upload size={13} /> IMPORT ELF
-            </button>
+            {isBinary && (
+              <button className="btn wide" onClick={() => void openBinaryDialog()}>
+                <Upload size={13} /> IMPORT ELF
+              </button>
+            )}
+            {!isBinary && (
+              <button className="btn wide" onClick={() => void openSpecDialog()}>
+                <FolderOpen size={13} /> OPEN MODEL
+              </button>
+            )}
             <button
               className="btn wide"
               onClick={() => {
@@ -1359,65 +1381,83 @@ export default function App() {
             {displayPath ?? "No model loaded"}
           </div>
           <div className="stack">
-            <button className="btn wide" onClick={() => void openSpecDialog()}>
-              <FolderOpen size={13} /> OPEN MODEL
-            </button>
-            <button className="btn wide" onClick={() => void openExample()}>
-              <Braces size={13} /> EXAMPLES
-            </button>
-            <button
-              className="btn wide"
-              disabled={!currentPath}
-              onClick={() => void saveProject()}
-            >
-              <Copy size={13} /> SAVE PROJECT
-            </button>
-            <button className="btn wide" onClick={() => void openProject()}>
-              <FolderOpen size={13} /> OPEN PROJECT
-            </button>
+            {!isBinary && (
+              <>
+                <button className="btn wide" onClick={() => void openSpecDialog()}>
+                  <FolderOpen size={13} /> OPEN MODEL
+                </button>
+                <button className="btn wide" onClick={() => void openExample()}>
+                  <Braces size={13} /> EXAMPLES
+                </button>
+                <button
+                  className="btn wide"
+                  disabled={!currentPath}
+                  onClick={() => void saveProject()}
+                >
+                  <Copy size={13} /> SAVE PROJECT
+                </button>
+                <button className="btn wide" onClick={() => void openProject()}>
+                  <FolderOpen size={13} /> OPEN PROJECT
+                </button>
+              </>
+            )}
+            {isBinary && (
+              <>
+                <button className="btn wide" onClick={() => void openBinaryDialog()}>
+                  <Upload size={13} /> IMPORT ELF
+                </button>
+                <button className="btn wide" onClick={() => void openElfExample()}>
+                  <Braces size={13} /> ELF EXAMPLE
+                </button>
+              </>
+            )}
           </div>
 
-          <div className="divider" />
-          <Section title="SCHEDULING POLICY" />
-          <select
-            className="policy-select"
-            value={policy}
-            disabled={busy}
-            onChange={(event) => {
-              setPolicy(event.target.value);
-              setDescribeText("");
-            }}
-          >
-            {SCHEDULING_POLICIES.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="policy-select"
-            value={tie}
-            disabled={busy}
-            onChange={(event) => {
-              setTie(event.target.value);
-              setDescribeText("");
-            }}
-          >
-            <option value="fifo">tie · fifo</option>
-            <option value="arbitrary">tie · arbitrary</option>
-          </select>
-          <div className="faint">
-            {policyInfo.family} · {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
-          </div>
-          <div className="stack">
-            <button
-              className="btn wide"
-              disabled={!currentPath || describeBusy}
-              onClick={() => void refreshDescription()}
-            >
-              <Terminal size={13} /> DESCRIBE MODEL
-            </button>
-          </div>
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="SCHEDULING POLICY" />
+              <select
+                className="policy-select"
+                value={policy}
+                disabled={busy}
+                onChange={(event) => {
+                  setPolicy(event.target.value);
+                  setDescribeText("");
+                }}
+              >
+                {SCHEDULING_POLICIES.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="policy-select"
+                value={tie}
+                disabled={busy}
+                onChange={(event) => {
+                  setTie(event.target.value);
+                  setDescribeText("");
+                }}
+              >
+                <option value="fifo">tie · fifo</option>
+                <option value="arbitrary">tie · arbitrary</option>
+              </select>
+              <div className="faint">
+                {policyInfo.family} · {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
+              </div>
+              <div className="stack">
+                <button
+                  className="btn wide"
+                  disabled={!currentPath || describeBusy}
+                  onClick={() => void refreshDescription()}
+                >
+                  <Terminal size={13} /> DESCRIBE MODEL
+                </button>
+              </div>
+            </>
+          )}
 
           <div className="divider" />
           <Section title="ARTIFACTS" />
@@ -1713,7 +1753,8 @@ export default function App() {
           <Hub
             onSpec={() => void openSpecDialog()}
             onBinary={() => void openBinaryDialog()}
-            onExample={() => void openExample()}
+            onSpecExample={() => void openExample()}
+            onBinaryExample={() => void openElfExample()}
           />
         ) : (
           <>
@@ -1810,10 +1851,14 @@ export default function App() {
 
       <aside className="inspector">
         <div className="inspector-scroll">
-          <Section title="ASSUMPTIONS & EVIDENCE" />
-          <pre className="assumptions">
-            {assumptions || "Run an analysis to populate the assumptions."}
-          </pre>
+          {!isBinary && (
+            <>
+              <Section title="ASSUMPTIONS &amp; EVIDENCE" />
+              <pre className="assumptions">
+                {assumptions || "Run an analysis to populate the assumptions."}
+              </pre>
+            </>
+          )}
           <div className="divider" />
           <Section title="DETAILS" />
           <div className="detail-title">{detail.title}</div>
@@ -1981,53 +2026,76 @@ function Stat({ label, value, tone }: { label: string; value: string; tone: Tone
 function Hub({
   onSpec,
   onBinary,
-  onExample,
+  onSpecExample,
+  onBinaryExample,
 }: {
   onSpec: () => void;
   onBinary: () => void;
-  onExample: () => void;
+  onSpecExample: () => void;
+  onBinaryExample: () => void;
 }) {
   return (
     <div className="hub">
       <div className="hub-head">
-        <div className="hub-eyebrow">NEW WORKSPACE</div>
-        <h1>Choose a workflow</h1>
+        <div className="hub-eyebrow">RT-PN WORKBENCH</div>
+        <h1>Choose an analysis mode</h1>
         <p>
-          Text is the primary surface. The analysis pipeline is shared; only the
-          intake contract differs.
+          The two modes share one workbench but never mix their stages. Pick a
+          mode to enter its dedicated workspace; switch at any time from the
+          sidebar.
         </p>
       </div>
       <div className="hub-cards">
-        <div className="hub-card">
-          <div className="hub-kicker">01 / MODEL FIRST</div>
-          <h2 className="accent">SPECIFICATION-FIRST</h2>
+        <section className="hub-card spec">
+          <div className="hub-kicker">01 · RTSL / TDG → PTPN → SCG</div>
+          <h2 className="accent">Scheduling analysis</h2>
           <p>
-            Author or open RTSL, TDG JSON or PTPN. Priorities, cores and timing
-            intervals are explicit.
+            Model-first, timed and prioritized. Lower a specification to a
+            priority timed Petri net and explore its state-class graph.
           </p>
+          <ul className="hub-list">
+            <li>11 scheduling policies with formal Mermaid semantics</li>
+            <li>WCRT, deadline slack, deadlock counterexamples, core allocation</li>
+            <li>Cross-policy sweep, state-class replay and report export</li>
+          </ul>
           <div className="hub-spacer" />
-          <button className="btn primary wide" onClick={onSpec}>
-            <FolderOpen size={13} /> OPEN SPECIFICATION
-          </button>
-        </div>
-        <div className="hub-card">
-          <div className="hub-kicker">02 / CODE FIRST</div>
-          <h2 className="violet">BINARY-FIRST</h2>
+          <div className="hub-actions">
+            <button className="btn primary wide" onClick={onSpec}>
+              <FolderOpen size={13} /> OPEN MODEL
+            </button>
+            <button className="btn small" onClick={onSpecExample}>
+              <Braces size={13} /> SAMPLE
+            </button>
+          </div>
+        </section>
+        <section className="hub-card binary">
+          <div className="hub-kicker">02 · ELF → CFG</div>
+          <h2 className="violet">Binary analysis</h2>
           <p>
-            Import an ELF: elf2tdg renders a readable ELF layout, then a readable
-            CFG and a Graphviz preview image. Threads/net analysis is pending.
+            Code-first static inspection: load an ELF and read its layout and
+            control-flow graph. Scheduling analysis is intentionally separate.
           </p>
+          <ul className="hub-list">
+            <li>Readable ELF layout extracted by elf2tdg</li>
+            <li>Readable CFG plus optional Graphviz preview image</li>
+            <li>elf2tdg is still evolving; TDG output is being replaced by CFG-first views</li>
+          </ul>
           <div className="hub-spacer" />
-          <button className="btn violet wide" onClick={onBinary}>
-            <Binary size={13} /> IMPORT ELF
-          </button>
-        </div>
+          <div className="hub-actions">
+            <button className="btn violet wide" onClick={onBinary}>
+              <Binary size={13} /> IMPORT ELF
+            </button>
+            <button className="btn small" onClick={onBinaryExample}>
+              <Braces size={13} /> SAMPLE
+            </button>
+          </div>
+        </section>
       </div>
       <div className="hub-foot">
-        <button className="btn" onClick={onExample}>
-          <Braces size={13} /> LOAD HW EXAMPLE
-        </button>
-        <span>Threads/net analysis is pending; ELF and CFG views come from elf2tdg.</span>
+        <span>
+          Both engines are bundled locally; examples live under{" "}
+          <span className="mono">examples/</span> in the repository and portable package.
+        </span>
       </div>
     </div>
   );

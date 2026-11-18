@@ -1,0 +1,247 @@
+{
+  "graph": {
+    "name": "MultiLanePipeline10T2C1L"
+  },
+  "configuration": {
+    "num_cpus": 2,
+    "cores_per_cpu": 1,
+    "shared_locks": [
+      "mutex0"
+    ],
+    "policy": "fixed",
+    "task_place_capacity": 1,
+    "start": [
+      {
+        "task": "T00",
+        "tokens": 1
+      }
+    ],
+    "end": [
+      "T09"
+    ],
+    "periodic": [
+      {
+        "task": "T00",
+        "period": 60
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "id": "T00",
+      "type": "task",
+      "priority": 10,
+      "core": 0,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T01",
+      "type": "task",
+      "priority": 11,
+      "core": 0,
+      "time": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "locks": [
+        "mutex0"
+      ]
+    },
+    {
+      "id": "T02",
+      "type": "task",
+      "priority": 12,
+      "core": 1,
+      "time": [
+        [
+          3,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T03",
+      "type": "task",
+      "priority": 13,
+      "core": 1,
+      "time": [
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "locks": [
+        "mutex0"
+      ]
+    },
+    {
+      "id": "T04",
+      "type": "task",
+      "priority": 14,
+      "core": 0,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T05",
+      "type": "task",
+      "priority": 15,
+      "core": 1,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T06",
+      "type": "task",
+      "priority": 16,
+      "core": 0,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T07",
+      "type": "task",
+      "priority": 17,
+      "core": 1,
+      "time": [
+        [
+          3,
+          3
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "T08",
+      "type": "task",
+      "priority": 18,
+      "core": 0,
+      "time": [
+        [
+          4,
+          4
+        ]
+      ],
+      "locks": []
+    },
+    {
+      "id": "F_L00",
+      "type": "fork"
+    },
+    {
+      "id": "J_L00",
+      "type": "join"
+    },
+    {
+      "id": "J_GLOBAL",
+      "type": "join"
+    },
+    {
+      "id": "T09",
+      "type": "task",
+      "priority": 19,
+      "core": 1,
+      "time": [
+        [
+          2,
+          2
+        ]
+      ],
+      "locks": []
+    }
+  ],
+  "edges": [
+    {
+      "source": "T00",
+      "target": "F_L00"
+    },
+    {
+      "source": "F_L00",
+      "target": "T01"
+    },
+    {
+      "source": "F_L00",
+      "target": "T02"
+    },
+    {
+      "source": "T01",
+      "target": "J_L00"
+    },
+    {
+      "source": "T02",
+      "target": "J_L00"
+    },
+    {
+      "source": "J_L00",
+      "target": "T03"
+    },
+    {
+      "source": "T03",
+      "target": "T04"
+    },
+    {
+      "source": "T04",
+      "target": "T05"
+    },
+    {
+      "source": "T05",
+      "target": "T06"
+    },
+    {
+      "source": "T06",
+      "target": "T07"
+    },
+    {
+      "source": "T07",
+      "target": "T08"
+    },
+    {
+      "source": "T08",
+      "target": "J_GLOBAL"
+    },
+    {
+      "source": "J_GLOBAL",
+      "target": "T09"
+    }
+  ]
+}

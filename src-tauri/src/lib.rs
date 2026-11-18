@@ -541,6 +541,37 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|error| format!("cannot read {path}: {error}"))
 }
 
+/// Directory that holds the packaged examples (`examples/ptpn`, `examples/elf2tdg`).
+///
+/// Resolution order: `PTPN_EXAMPLES_DIR`, next to the executable (portable
+/// layout), the repository checkout (debug builds), then the working directory.
+#[tauri::command]
+fn example_base() -> Result<String, String> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(value) = std::env::var("PTPN_EXAMPLES_DIR") {
+        candidates.push(PathBuf::from(value));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            candidates.push(directory.join("examples"));
+        }
+    }
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("examples"),
+    );
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("examples"));
+    }
+    for candidate in candidates {
+        if candidate.is_dir() {
+            return Ok(candidate.display().to_string());
+        }
+    }
+    Err("examples directory not found (expected examples/ptpn and examples/elf2tdg)".to_string())
+}
+
 /// `ptpn describe`: the analyzer's own restatement of the effective scheduling
 /// semantics (computed priorities, cores, lock nesting, release bindings).
 #[tauri::command]
@@ -806,6 +837,7 @@ pub fn run() {
             cancel_analysis,
             describe_model,
             engine_health,
+            example_base,
             fill_timings,
             pending_timings,
             read_text_file,

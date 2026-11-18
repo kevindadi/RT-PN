@@ -16,16 +16,30 @@ Built with **Tauri 2 + React + TypeScript**:
 
 ## Workflows
 
-### Specification-first
+On launch the workbench shows a two-card workflow chooser; the two analysis
+modes get dedicated workspaces and their stages/panels are never mixed. The
+sidebar's workflow section can switch modes at any time (`NEW WORKSPACE`).
+
+- **Scheduling analysis** — specification-first, timed/prioritized PTPN.
+- **Binary analysis** — ELF layout and CFG inspection via `elf2tdg`.
+
+Sample models for both modes ship in `examples/` (see [Layout](#layout)); the
+in-app `EXAMPLES` / `SAMPLE` buttons resolve them at runtime.
+
+### Scheduling analysis (specification-first)
 
 `RTSL` / TDG JSON / PTPN → analyzer → `DAG`, `PTPN`, `STATE SPACE`, `TIMELINE`,
 `REPORT` text stages. Assumptions, core/priority coverage, exactness and
 truncation stay visible in the inspector; `PREVIEW` opens a PTPN or state-class
 graph.
 
-### Binary-first
+### Binary analysis (code-first)
 
 `ELF` → readable ELF layout → readable CFG + preview image.
+
+The binary workflow is isolated from scheduling analysis: it has its own
+stages, inspector and sample (`examples/elf2tdg`), and never feeds an ELF
+into the PTPN analyzer.
 
 Importing an `.elf`, `.out` or `.axf` binary now runs the bundled `elf2tdg`
 extractor instead of loading a pre-made parser bundle:
@@ -267,16 +281,23 @@ same as `just doctor`.
 
 ```text
 engines/prioritized-tpn/  C++ analyzer submodule (PTPN / WCRT / deadlock CLI)
-engines/elf2tdg/          Rust ELF -> Task Dependency Graph submodule
+engines/elf2tdg/          Rust ELF -> CFG extractor submodule (still developing)
+examples/ptpn/            analyzer examples copied from the C++ CLI repository
+examples/elf2tdg/         elf2tdg examples/artifacts copied for the binary workflow
 docs/ptpn/                Analyzer documentation moved from the CLI repository
+docs/elf2tdg/             elf2tdg documentation snapshot (upstream copy)
 scripts/                  build / stage / package / version scripts
 Justfile                  unified build entry
 build/                    generated engine build outputs (ignored)
 src-tauri/binaries/       generated Tauri sidecars (ignored)
 src/                 React workbench
-  App.tsx            workflow, stages, inspector, run history
+  App.tsx            workflow chooser, stages, inspector, run history
   CodeStage.tsx      CodeMirror text surface
   GraphPreview.tsx   React Flow preview
+  Semantics.tsx      scheduling-policy formal semantics (Mermaid)
+  Mermaid.tsx        lazy Mermaid renderer
+  Replay.tsx         state-class replay
+  ReplayCompare.tsx  policy-aware side-by-side replay
   api.ts             Tauri commands and native dialogs
 src-tauri/src/       Rust backend
   lib.rs             Tauri commands
@@ -284,9 +305,13 @@ src-tauri/src/       Rust backend
   model.rs           analysis result model
   dot.rs             PTPN / state-class DOT parser
   workbench.rs       text stage renderers
-  binary.rs          ELF parser bundle loader
+  binary.rs          ELF / CFG workflow orchestration
   graph.rs           serializable preview graph
 ```
+
+The engine submodules remain the source of truth and are pinned by gitlink;
+`examples/` and `docs/elf2tdg/` are checked-in copies so the workbench, sample
+buttons and portable package are self-contained while `elf2tdg` keeps evolving.
 
 ![RT-PN workbench](docs/workbench.png)
 

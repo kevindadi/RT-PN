@@ -1,0 +1,172 @@
+flowchart LR
+  subgraph cfg0["rust_concurrency::start_tasks\n0x80005ea"]
+    direction LR
+    b0_134219242["bb 0x80005ea<br/>6 insn<br/>push (r4, r5, r7, lr)<br/>add r7, sp, #8<br/>mov r4, r0<br/>movw r5, #0<br/>movt r5, #0x2000<br/>movw r0, #0x101"]
+    b0_134219260["bb 0x80005fc<br/>3 insn<br/>ldrex r1, (r5)<br/>cmp r1, #0<br/>bne.w #0x8000790"]
+    b0_134219270["bb 0x8000606<br/>3 insn<br/>strex r1, r0, (r5)<br/>cmp r1, #0<br/>bne #0x80005fc"]
+    b0_134219278["bb 0x800060e<br/>4 insn<br/>movw r0, #0x85d<br/>movt r0, #0x800<br/>str r0, (r5, #0xc)<br/>bl #0x8000472<br/>1 call(s)"]
+    b0_134219292["bb 0x800061c<br/>2 insn<br/>str r4, (r5, #8)<br/>ldr r0, (r4)"]
+    b0_134219296["bb 0x8000620<br/>4 insn<br/>str r0, (r5, #4)<br/>ldrex r1, (r4)<br/>cmp r1, r0<br/>bne #0x8000694"]
+    b0_134219306["bb 0x800062a<br/>3 insn<br/>dmb sy<br/>strex r0, r5, (r4)<br/>cbnz r0, #0x8000698"]
+    b0_134219316["bb 0x8000634<br/>1 insn<br/>movs r0, #1"]
+    b0_134219318["bb 0x8000636<br/>2 insn<br/>dmb sy<br/>cbnz r0, #0x80006b4"]
+    b0_134219324["bb 0x800063c<br/>4 insn<br/>str r1, (r5, #4)<br/>ldrex r0, (r4)<br/>cmp r0, r1<br/>bne #0x800069c"]
+    b0_134219334["bb 0x8000646<br/>3 insn<br/>dmb sy<br/>strex r1, r5, (r4)<br/>cbnz r1, #0x80006a0"]
+    b0_134219344["bb 0x8000650<br/>1 insn<br/>movs r1, #1"]
+    b0_134219346["bb 0x8000652<br/>2 insn<br/>dmb sy<br/>cbnz r1, #0x80006b6"]
+    b0_134219352["bb 0x8000658<br/>4 insn<br/>str r0, (r5, #4)<br/>ldrex r1, (r4)<br/>cmp r1, r0<br/>bne #0x80006a4"]
+    b0_134219362["bb 0x8000662<br/>3 insn<br/>dmb sy<br/>strex r0, r5, (r4)<br/>cbnz r0, #0x80006a8"]
+    b0_134219372["bb 0x800066c<br/>1 insn<br/>movs r0, #1"]
+    b0_134219374["bb 0x800066e<br/>2 insn<br/>dmb sy<br/>cbnz r0, #0x80006bc"]
+    b0_134219380["bb 0x8000674<br/>4 insn<br/>str r1, (r5, #4)<br/>ldrex r0, (r4)<br/>cmp r0, r1<br/>bne #0x80006ac"]
+    b0_134219390["bb 0x800067e<br/>3 insn<br/>dmb sy<br/>strex r1, r5, (r4)<br/>cbnz r1, #0x80006b0"]
+    b0_134219400["bb 0x8000688<br/>1 insn<br/>movs r1, #1"]
+    b0_134219402["bb 0x800068a<br/>3 insn<br/>dmb sy<br/>cmp r1, #0<br/>beq #0x8000620"]
+    b0_134219410["bb 0x8000692<br/>1 insn<br/>b #0x80006b6"]
+    b0_134219412["bb 0x8000694<br/>1 insn<br/>clrex"]
+    b0_134219416["bb 0x8000698<br/>2 insn<br/>movs r0, #0<br/>b #0x8000636"]
+    b0_134219420["bb 0x800069c<br/>1 insn<br/>clrex"]
+    b0_134219424["bb 0x80006a0<br/>2 insn<br/>movs r1, #0<br/>b #0x8000652"]
+    b0_134219428["bb 0x80006a4<br/>1 insn<br/>clrex"]
+    b0_134219432["bb 0x80006a8<br/>2 insn<br/>movs r0, #0<br/>b #0x800066e"]
+    b0_134219436["bb 0x80006ac<br/>1 insn<br/>clrex"]
+    b0_134219440["bb 0x80006b0<br/>2 insn<br/>movs r1, #0<br/>b #0x800068a"]
+    b0_134219444["bb 0x80006b4<br/>1 insn<br/>mov r0, r1"]
+    b0_134219446["bb 0x80006b6<br/>1 insn<br/>cbnz r0, #0x80006c2"]
+    b0_134219448["bb 0x80006b8<br/>2 insn<br/>sev<br/>b #0x80006c2"]
+    b0_134219452["bb 0x80006bc<br/>3 insn<br/>mov r0, r1<br/>cmp r0, #0<br/>beq #0x80006b8"]
+    b0_134219458["bb 0x80006c2<br/>3 insn<br/>movw r5, #0x18<br/>movt r5, #0x2000<br/>movw r0, #0x101"]
+    b0_134219470["bb 0x80006ce<br/>3 insn<br/>ldrex r1, (r5)<br/>cmp r1, #0<br/>bne #0x8000796"]
+    b0_134219478["bb 0x80006d6<br/>3 insn<br/>strex r1, r0, (r5)<br/>cmp r1, #0<br/>bne #0x80006ce"]
+    b0_134219486["bb 0x80006de<br/>4 insn<br/>movw r0, #0x89b<br/>movt r0, #0x800<br/>str r0, (r5, #0xc)<br/>bl #0x800048e<br/>1 call(s)"]
+    b0_134219500["bb 0x80006ec<br/>2 insn<br/>str r4, (r5, #8)<br/>ldr r0, (r4)"]
+    b0_134219504["bb 0x80006f0<br/>4 insn<br/>str r0, (r5, #4)<br/>ldrex r1, (r4)<br/>cmp r1, r0<br/>bne #0x8000764"]
+    b0_134219514["bb 0x80006fa<br/>3 insn<br/>dmb sy<br/>strex r0, r5, (r4)<br/>cbnz r0, #0x8000768"]
+    b0_134219524["bb 0x8000704<br/>1 insn<br/>movs r0, #1"]
+    b0_134219526["bb 0x8000706<br/>2 insn<br/>dmb sy<br/>cbnz r0, #0x8000784"]
+    b0_134219532["bb 0x800070c<br/>4 insn<br/>str r1, (r5, #4)<br/>ldrex r0, (r4)<br/>cmp r0, r1<br/>bne #0x800076c"]
+    b0_134219542["bb 0x8000716<br/>3 insn<br/>dmb sy<br/>strex r1, r5, (r4)<br/>cbnz r1, #0x8000770"]
+    b0_134219552["bb 0x8000720<br/>1 insn<br/>movs r1, #1"]
+    b0_134219554["bb 0x8000722<br/>2 insn<br/>dmb sy<br/>cbnz r1, #0x8000786"]
+    b0_134219560["bb 0x8000728<br/>4 insn<br/>str r0, (r5, #4)<br/>ldrex r1, (r4)<br/>cmp r1, r0<br/>bne #0x8000774"]
+    b0_134219570["bb 0x8000732<br/>3 insn<br/>dmb sy<br/>strex r0, r5, (r4)<br/>cbnz r0, #0x8000778"]
+    b0_134219580["bb 0x800073c<br/>1 insn<br/>movs r0, #1"]
+    b0_134219582["bb 0x800073e<br/>2 insn<br/>dmb sy<br/>cbnz r0, #0x8000784"]
+    b0_134219588["bb 0x8000744<br/>4 insn<br/>str r1, (r5, #4)<br/>ldrex r0, (r4)<br/>cmp r0, r1<br/>bne #0x800077c"]
+    b0_134219598["bb 0x800074e<br/>3 insn<br/>dmb sy<br/>strex r1, r5, (r4)<br/>cbnz r1, #0x8000780"]
+    b0_134219608["bb 0x8000758<br/>1 insn<br/>movs r1, #1"]
+    b0_134219610["bb 0x800075a<br/>3 insn<br/>dmb sy<br/>cmp r1, #0<br/>beq #0x80006f0"]
+    b0_134219618["bb 0x8000762<br/>1 insn<br/>b #0x8000786"]
+    b0_134219620["bb 0x8000764<br/>1 insn<br/>clrex"]
+    b0_134219624["bb 0x8000768<br/>2 insn<br/>movs r0, #0<br/>b #0x8000706"]
+    b0_134219628["bb 0x800076c<br/>1 insn<br/>clrex"]
+    b0_134219632["bb 0x8000770<br/>2 insn<br/>movs r1, #0<br/>b #0x8000722"]
+    b0_134219636["bb 0x8000774<br/>1 insn<br/>clrex"]
+    b0_134219640["bb 0x8000778<br/>2 insn<br/>movs r0, #0<br/>b #0x800073e"]
+    b0_134219644["bb 0x800077c<br/>1 insn<br/>clrex"]
+    b0_134219648["bb 0x8000780<br/>2 insn<br/>movs r1, #0<br/>b #0x800075a"]
+    b0_134219652["bb 0x8000784<br/>1 insn<br/>mov r0, r1"]
+    b0_134219654["bb 0x8000786<br/>3 insn<br/>cmp r0, #0<br/>it ne<br/>pop (r4, r5, r7, pc)"]
+    b0_134219664["bb 0x8000790<br/>2 insn<br/>clrex<br/>b #0x80006c2"]
+    b0_134219670["bb 0x8000796<br/>2 insn<br/>clrex<br/>pop (r4, r5, r7, pc)"]
+    b0_134219242 -->|fallthrough| b0_134219260
+    b0_134219260 -->|fallthrough| b0_134219270
+    b0_134219260 -->|branch| b0_134219664
+    b0_134219270 -->|branch| b0_134219260
+    b0_134219270 -->|fallthrough| b0_134219278
+    b0_134219278 -->|return| b0_134219292
+    b0_134219292 -->|fallthrough| b0_134219296
+    b0_134219296 -->|fallthrough| b0_134219306
+    b0_134219296 -->|branch| b0_134219412
+    b0_134219306 -->|fallthrough| b0_134219316
+    b0_134219306 -->|branch| b0_134219416
+    b0_134219316 -->|fallthrough| b0_134219318
+    b0_134219318 -->|fallthrough| b0_134219324
+    b0_134219318 -->|branch| b0_134219444
+    b0_134219324 -->|fallthrough| b0_134219334
+    b0_134219324 -->|branch| b0_134219420
+    b0_134219334 -->|fallthrough| b0_134219344
+    b0_134219334 -->|branch| b0_134219424
+    b0_134219344 -->|fallthrough| b0_134219346
+    b0_134219346 -->|fallthrough| b0_134219352
+    b0_134219346 -->|branch| b0_134219446
+    b0_134219352 -->|fallthrough| b0_134219362
+    b0_134219352 -->|branch| b0_134219428
+    b0_134219362 -->|fallthrough| b0_134219372
+    b0_134219362 -->|branch| b0_134219432
+    b0_134219372 -->|fallthrough| b0_134219374
+    b0_134219374 -->|fallthrough| b0_134219380
+    b0_134219374 -->|branch| b0_134219452
+    b0_134219380 -->|fallthrough| b0_134219390
+    b0_134219380 -->|branch| b0_134219436
+    b0_134219390 -->|fallthrough| b0_134219400
+    b0_134219390 -->|branch| b0_134219440
+    b0_134219400 -->|fallthrough| b0_134219402
+    b0_134219402 -->|branch| b0_134219296
+    b0_134219402 -->|fallthrough| b0_134219410
+    b0_134219410 ==>|jump| b0_134219446
+    b0_134219412 -->|fallthrough| b0_134219416
+    b0_134219416 ==>|jump| b0_134219318
+    b0_134219420 -->|fallthrough| b0_134219424
+    b0_134219424 ==>|jump| b0_134219346
+    b0_134219428 -->|fallthrough| b0_134219432
+    b0_134219432 ==>|jump| b0_134219374
+    b0_134219436 -->|fallthrough| b0_134219440
+    b0_134219440 ==>|jump| b0_134219402
+    b0_134219444 -->|fallthrough| b0_134219446
+    b0_134219446 -->|fallthrough| b0_134219448
+    b0_134219446 -->|branch| b0_134219458
+    b0_134219448 ==>|jump| b0_134219458
+    b0_134219452 -->|branch| b0_134219448
+    b0_134219452 -->|fallthrough| b0_134219458
+    b0_134219458 -->|fallthrough| b0_134219470
+    b0_134219470 -->|fallthrough| b0_134219478
+    b0_134219470 -->|branch| b0_134219670
+    b0_134219478 -->|branch| b0_134219470
+    b0_134219478 -->|fallthrough| b0_134219486
+    b0_134219486 -->|return| b0_134219500
+    b0_134219500 -->|fallthrough| b0_134219504
+    b0_134219504 -->|fallthrough| b0_134219514
+    b0_134219504 -->|branch| b0_134219620
+    b0_134219514 -->|fallthrough| b0_134219524
+    b0_134219514 -->|branch| b0_134219624
+    b0_134219524 -->|fallthrough| b0_134219526
+    b0_134219526 -->|fallthrough| b0_134219532
+    b0_134219526 -->|branch| b0_134219652
+    b0_134219532 -->|fallthrough| b0_134219542
+    b0_134219532 -->|branch| b0_134219628
+    b0_134219542 -->|fallthrough| b0_134219552
+    b0_134219542 -->|branch| b0_134219632
+    b0_134219552 -->|fallthrough| b0_134219554
+    b0_134219554 -->|fallthrough| b0_134219560
+    b0_134219554 -->|branch| b0_134219654
+    b0_134219560 -->|fallthrough| b0_134219570
+    b0_134219560 -->|branch| b0_134219636
+    b0_134219570 -->|fallthrough| b0_134219580
+    b0_134219570 -->|branch| b0_134219640
+    b0_134219580 -->|fallthrough| b0_134219582
+    b0_134219582 -->|fallthrough| b0_134219588
+    b0_134219582 -->|branch| b0_134219652
+    b0_134219588 -->|fallthrough| b0_134219598
+    b0_134219588 -->|branch| b0_134219644
+    b0_134219598 -->|fallthrough| b0_134219608
+    b0_134219598 -->|branch| b0_134219648
+    b0_134219608 -->|fallthrough| b0_134219610
+    b0_134219610 -->|branch| b0_134219504
+    b0_134219610 -->|fallthrough| b0_134219618
+    b0_134219618 ==>|jump| b0_134219654
+    b0_134219620 -->|fallthrough| b0_134219624
+    b0_134219624 ==>|jump| b0_134219526
+    b0_134219628 -->|fallthrough| b0_134219632
+    b0_134219632 ==>|jump| b0_134219554
+    b0_134219636 -->|fallthrough| b0_134219640
+    b0_134219640 ==>|jump| b0_134219582
+    b0_134219644 -->|fallthrough| b0_134219648
+    b0_134219648 ==>|jump| b0_134219610
+    b0_134219652 -->|fallthrough| b0_134219654
+    b0_134219664 ==>|jump| b0_134219458
+  end
+  call0["<embassy_executor::raw::util::UninitCell<rust...<br/>0x8000472"]
+  b0_134219278 -.->|call| call0
+  call1["<embassy_executor::raw::util::UninitCell<rust...<br/>0x800048e"]
+  b0_134219486 -.->|call| call1
