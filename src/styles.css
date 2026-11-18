@@ -3357,9 +3357,11 @@ textarea {
 /* ---------- unified JetBrains Mono typography ---------- */
 
 :root {
-  --font-ui: "JetBrains Mono", "Cascadia Code", "JetBrains Mono NL", Consolas, monospace;
-  --font-display: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
-  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --font-ui: "JetBrainsMono NF", "JetBrainsMonoNL NF", "JetBrainsMono NFM", "Cascadia Code",
+    Consolas, monospace;
+  --font-display: "JetBrainsMono NF", "JetBrainsMonoNL NF", "Cascadia Code", Consolas,
+    monospace;
+  --font-mono: "JetBrainsMono NF", "JetBrainsMonoNL NF", "Cascadia Code", Consolas, monospace;
 }
 
 html,

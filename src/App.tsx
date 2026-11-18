@@ -1464,6 +1464,9 @@ export default function App() {
             </div>
           </div>
           <div className="chooser-engines">
+            <button className="btn small" onClick={() => setGuideOpen(true)}>
+              ? GUIDE
+            </button>
             <span className="engine-label" title={cli?.path ?? undefined}>
               <Cpu size={11} />
               <span>
@@ -1492,6 +1495,7 @@ export default function App() {
           Two independent workspaces · scheduling analysis and binary analysis never share
           stages or configuration.
         </footer>
+        {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
     );
   }
