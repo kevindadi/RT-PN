@@ -1530,7 +1530,7 @@ export default function App() {
           onBinaryExample={() => void openElfExample()}
         />
         <footer className="chooser-foot">
-          RT-PN 0.2.2 · named run configurations · Two independent workspaces.
+          RT-PN 0.2.3 · results workspace tabs · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2656,5 +2656,6 @@ function Hub({
     </div>
   );
 }
+
 
 

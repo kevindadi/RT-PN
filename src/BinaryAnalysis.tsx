@@ -69,6 +69,9 @@ export function BinaryAnalysisView({
   const frequency = num(wcet?.frequency_hz);
 
   const [exportNote, setExportNote] = useState("");
+  const [tab, setTab] = useState<
+    "summary" | "wcet" | "cache" | "memory" | "branch" | "timing"
+  >("summary");
 
   const reproduceCommand = [
     "elf2tdg",
@@ -213,6 +216,48 @@ export function BinaryAnalysisView({
       </div>
       {exportNote && <div className="faint analysis-note">{exportNote}</div>}
 
+      <div className="cfg-tabs result-tabs">
+        {(
+          [
+            ["summary", "SUMMARY"],
+            ["wcet", "WCET"],
+            ["cache", "CACHES"],
+            ["memory", "DATA MEMORY"],
+            ["branch", "BRANCHES"],
+            ["timing", "TIMING MODEL"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            className={`btn small ${tab === value ? "accent" : ""}`}
+            onClick={() => setTab(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "summary" && (
+        <>
+          <div className="analysis-facts">
+            <Fact label="model" value={str(model.id) || "none"} />
+            <Fact label="board profile" value={profileId} />
+            <Fact
+              label="frequency"
+              value={frequency !== null ? `${(frequency / 1_000_000).toFixed(1)} MHz` : "—"}
+            />
+            <Fact label="wcet roots" value={String(wcetRoots.length)} />
+            <Fact label="functions" value={String(binary.functions)} />
+            <Fact label="instructions" value={String(binary.coverage.total_instructions)} />
+          </div>
+          <CaveatList items={analysisCaveats} />
+          <div className="faint">
+            Pick a tab above for WCET roots, cache, data-memory, branch-prediction or the
+            instruction-timing model. Export buttons above save the current run as MD/JSON.
+          </div>
+        </>
+      )}
+
       {!wcet && !icache && !dcache && !memory && !branch && (
         <div className="bin-caveats">
           <div className="sem-eyebrow">NO ANALYSIS PROFILE ENABLED</div>
@@ -224,7 +269,7 @@ export function BinaryAnalysisView({
       )}
 
       <div className="analysis-grid">
-        {wcet && (
+      {tab === "wcet" && wcet && (
           <section className="analysis-card analysis-card-wide">
             <div className="sem-eyebrow">WCET · CFG LONGEST PATH</div>
             <div className="analysis-facts">
@@ -282,7 +327,7 @@ export function BinaryAnalysisView({
           </section>
         )}
 
-        {icache && (
+        {tab === "cache" && icache && (
           <section className="analysis-card">
             <div className="sem-eyebrow">INSTRUCTION CACHE</div>
             <div className="analysis-facts">
@@ -297,7 +342,7 @@ export function BinaryAnalysisView({
           </section>
         )}
 
-        {dcache && (
+        {tab === "cache" && dcache && (
           <section className="analysis-card">
             <div className="sem-eyebrow">DATA CACHE</div>
             <div className="analysis-facts">
@@ -312,7 +357,7 @@ export function BinaryAnalysisView({
           </section>
         )}
 
-        {memory && (
+        {tab === "memory" && memory && (
           <section className="analysis-card">
             <div className="sem-eyebrow">DATA MEMORY</div>
             <div className="analysis-facts">
@@ -327,7 +372,7 @@ export function BinaryAnalysisView({
           </section>
         )}
 
-        {branch && (
+        {tab === "branch" && branch && (
           <section className="analysis-card">
             <div className="sem-eyebrow">BRANCH PREDICTION</div>
             <div className="analysis-facts">
@@ -343,11 +388,13 @@ export function BinaryAnalysisView({
         )}
       </div>
 
-      <InstructionTiming
-        binary={binary}
-        boardProfile={boardProfile}
-        onProfileSaved={onProfileSaved}
-      />
+      {tab === "timing" && (
+        <InstructionTiming
+          binary={binary}
+          boardProfile={boardProfile}
+          onProfileSaved={onProfileSaved}
+        />
+      )}
     </div>
   );
 }
