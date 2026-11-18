@@ -2952,6 +2952,15 @@ textarea {
   border-color: #ff7b7b;
 }
 
+.project-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin-top: 4px;
+  padding: 0 2px;
+  font-size: 8px;
+}
+
 .project-card:hover {
   border-color: #8f7bff;
   transform: translateY(-1px);

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Value};
 
 const PROJECTS_LIMIT: usize = 200;
@@ -46,6 +46,7 @@ fn database() -> Result<Connection, String> {
                 latest_wcet_root TEXT,
                 latest_wcet_cycles REAL,
                 run_count INTEGER NOT NULL DEFAULT 0,
+                last_runs TEXT,
                 created_at INTEGER NOT NULL,
                 last_opened INTEGER NOT NULL
             );",
@@ -56,6 +57,7 @@ fn database() -> Result<Connection, String> {
         "ALTER TABLE projects ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    let _ = connection.execute("ALTER TABLE projects ADD COLUMN last_runs TEXT", []);
     Ok(connection)
 }
 
@@ -157,6 +159,30 @@ pub fn save_project(
 
     let connection = database()?;
     let now = now_seconds();
+    let previous_runs: Option<String> = connection
+        .query_row("SELECT last_runs FROM projects WHERE id = ?1", [&id], |row| row.get(0))
+        .optional()
+        .unwrap_or(None);
+    let mut history: Vec<Value> = previous_runs
+        .and_then(|value| serde_json::from_str::<Value>(&value).ok())
+        .and_then(|value| value.as_array().cloned())
+        .unwrap_or_default();
+    history.insert(
+        0,
+        json!({
+            "at": now,
+            "profile": profile,
+            "wcet_root": wcet_root,
+            "wcet_cycles": wcet_cycles,
+        }),
+    );
+    history.truncate(10);
+    connection
+        .execute(
+            "UPDATE projects SET last_runs = ?1 WHERE id = ?2",
+            params![serde_json::to_string(&history).unwrap_or_default(), id],
+        )
+        .map_err(|error| format!("cannot record run history: {error}"))?;
     connection
         .execute(
             "INSERT INTO projects (id, name, dir, elf_path, arch, functions, profile, options,
@@ -189,7 +215,7 @@ pub fn recent(limit: Option<u32>) -> Result<Value, String> {
     let mut statement = connection
         .prepare(
             "SELECT id, name, elf_path, arch, functions, profile, latest_wcet_root,
-                    latest_wcet_cycles, run_count, last_opened FROM projects
+                    latest_wcet_cycles, run_count, last_runs, last_opened FROM projects
              ORDER BY last_opened DESC LIMIT ?1",
         )
         .map_err(|error| format!("cannot query projects: {error}"))?;
@@ -205,7 +231,10 @@ pub fn recent(limit: Option<u32>) -> Result<Value, String> {
                 "latest_wcet_root": row.get::<_, Option<String>>(6)?,
                 "latest_wcet_cycles": row.get::<_, Option<f64>>(7)?,
                 "run_count": row.get::<_, i64>(8)?,
-                "last_opened": row.get::<_, i64>(9)?,
+                "last_runs": row
+                    .get::<_, Option<String>>(9)?
+                    .and_then(|value| serde_json::from_str::<Value>(&value).ok()),
+                "last_opened": row.get::<_, i64>(10)?,
             }))
         })
         .map_err(|error| format!("cannot read projects: {error}"))?;

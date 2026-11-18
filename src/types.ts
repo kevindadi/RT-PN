@@ -223,6 +223,12 @@ export interface WorkspaceProject {
   latest_wcet_root?: string;
   latest_wcet_cycles?: number;
   run_count?: number;
+  last_runs?: Array<{
+    at: number;
+    profile?: string;
+    wcet_root?: string | null;
+    wcet_cycles?: number | null;
+  }>;
   last_opened?: number;
 }
 

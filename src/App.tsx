@@ -1629,6 +1629,18 @@ export default function App() {
                   >
                     ×
                   </button>
+                  {project.last_runs && project.last_runs.length > 0 && (
+                    <div className="project-runs mono faint">
+                      {project.last_runs.slice(0, 3).map((run, index) => (
+                        <span key={`${run.at}-${index}`}>
+                          {new Date(run.at * 1000).toLocaleTimeString()} ·{" "}
+                          {run.wcet_root
+                            ? `${run.wcet_root} ${run.wcet_cycles?.toFixed(0) ?? "?"} cy`
+                            : "no WCET"}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1636,7 +1648,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.2 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.3.3 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2762,6 +2774,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
