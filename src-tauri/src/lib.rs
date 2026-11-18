@@ -543,33 +543,47 @@ fn read_text_file(path: String) -> Result<String, String> {
 
 /// Directory that holds the packaged examples (`examples/ptpn`, `examples/elf2tdg`).
 ///
-/// Resolution order: `PTPN_EXAMPLES_DIR`, next to the executable (portable
-/// layout), the repository checkout (debug builds), then the working directory.
+/// Resolution order: `PTPN_EXAMPLES_DIR`, the repository checkout (debug builds
+/// and installed dev builds), next to the executable (portable layout), then the
+/// working directory. A candidate is only accepted when it actually contains the
+/// `ptpn` and `elf2tdg` trees — Cargo itself creates `target/debug/examples`, so
+/// an existence check on `examples/` alone is not enough.
 #[tauri::command]
 fn example_base() -> Result<String, String> {
+    fn is_examples_dir(path: &std::path::Path) -> bool {
+        path.join("ptpn").is_dir() && path.join("elf2tdg").is_dir()
+    }
+
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(value) = std::env::var("PTPN_EXAMPLES_DIR") {
         candidates.push(PathBuf::from(value));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(directory) = exe.parent() {
-            candidates.push(directory.join("examples"));
-        }
     }
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("examples"),
     );
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(directory) = exe.parent() {
+            candidates.push(directory.join("examples"));
+        }
+    }
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("examples"));
     }
     for candidate in candidates {
-        if candidate.is_dir() {
-            return Ok(candidate.display().to_string());
+        if is_examples_dir(&candidate) {
+            return Ok(candidate
+                .canonicalize()
+                .unwrap_or(candidate)
+                .display()
+                .to_string());
         }
     }
-    Err("examples directory not found (expected examples/ptpn and examples/elf2tdg)".to_string())
+    Err(
+        "examples directory not found (expected examples/ptpn and examples/elf2tdg)"
+            .to_string(),
+    )
 }
 
 /// `ptpn describe`: the analyzer's own restatement of the effective scheduling

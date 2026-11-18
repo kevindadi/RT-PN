@@ -218,7 +218,7 @@ task fusion: aperiodic {
   critical sections described above. `mutex` locks may suspend; the analysis
   then applies the selected policy (for example PIP/PCP/SRP priority
   inheritance).
-  Evidence: `example/diagnostics/spin-lock.rtsl` lowers to `worker_exec_1`
+  Evidence: `examples/ptpn/diagnostics/spin-lock.rtsl` lowers to `worker_exec_1`
   suspendable, `worker_exec_2` (the critical section) non-suspendable and
   `worker_exec_3` suspendable; the lock arcs
   `worker_seg_1_done -> worker_lock_1`, `spin1 -> worker_lock_1`,
@@ -473,13 +473,13 @@ system demo {
 ```
 
 A runnable filled version is
-[`example/introduction/demo-filled.rtsl`](../example/introduction/demo-filled.rtsl);
+[`examples/ptpn/introduction/demo-filled.rtsl`](../example/introduction/demo-filled.rtsl);
 it replaces the pending `fusion` timing with three locked segments:
 
 ```bash
-./build/ptpn check -f example/introduction/demo.rtsl --diagnostics json  # exit 0, pending fusion
-./build/ptpn rtsl  -f example/introduction/demo.rtsl --diagnostics json  # exit 3, E-VAL-213
-./build/ptpn rtsl  -f example/introduction/demo-filled.rtsl --diagnostics json \
+./build/ptpn check -f examples/ptpn/introduction/demo.rtsl --diagnostics json  # exit 0, pending fusion
+./build/ptpn rtsl  -f examples/ptpn/introduction/demo.rtsl --diagnostics json  # exit 3, E-VAL-213
+./build/ptpn rtsl  -f examples/ptpn/introduction/demo-filled.rtsl --diagnostics json \
     --export-tdg /tmp/demo.tdg.json --export-metrics /tmp/demo.metrics.json
 ./build/ptpn tdg   -f /tmp/demo.tdg.json --export-metrics /tmp/demo-tdg.metrics.json
 # the two metrics files are identical
@@ -489,18 +489,18 @@ More runnable snippets:
 
 ```bash
 # Open core assignment
-./build/ptpn check    -f example/introduction/core-any.rtsl --diagnostics json  # hint, exit 0
-./build/ptpn rtsl     -f example/introduction/core-any.rtsl --diagnostics json  # error, exit 3
-./build/ptpn allocate -f example/introduction/core-any.rtsl -o /tmp/alloc.json \
+./build/ptpn check    -f examples/ptpn/introduction/core-any.rtsl --diagnostics json  # hint, exit 0
+./build/ptpn rtsl     -f examples/ptpn/introduction/core-any.rtsl --diagnostics json  # error, exit 3
+./build/ptpn allocate -f examples/ptpn/introduction/core-any.rtsl -o /tmp/alloc.json \
     --diagnostics json                                                          # exit 0
 
 # Single lock, three segments
-./build/ptpn rtsl -f example/introduction/locked.rtsl --diagnostics json
+./build/ptpn rtsl -f examples/ptpn/introduction/locked.rtsl --diagnostics json
 
 # Representative errors
-./build/ptpn check -f example/diagnostics/syntax-error.rtsl --diagnostics json      # exit 2
-./build/ptpn check -f example/diagnostics/validation-error.rtsl --diagnostics json  # exit 3
-./build/ptpn rtsl  -f example/diagnostics/unsupported-edf-locks.rtsl --diagnostics json  # exit 4
+./build/ptpn check -f examples/ptpn/diagnostics/syntax-error.rtsl --diagnostics json      # exit 2
+./build/ptpn check -f examples/ptpn/diagnostics/validation-error.rtsl --diagnostics json  # exit 3
+./build/ptpn rtsl  -f examples/ptpn/diagnostics/unsupported-edf-locks.rtsl --diagnostics json  # exit 4
 ```
 
 | Example | Command | Expected result |
@@ -529,7 +529,7 @@ system. The precise message, fix and location columns are in
 model, a periodic reference scenario can be written with real RTSL syntax:
 
 ```rtsl
-// example/diagnostics/sporadic-reference.rtsl
+// examples/ptpn/diagnostics/sporadic-reference.rtsl
 task sp: periodic {
   period 10ms      // explicit period; this is not `period = mit`
   deadline 10ms
@@ -546,11 +546,11 @@ silently change the task kind, delete `mit`, or rewrite the period to make
 
 ### 12.2 Spin-lock evidence
 
-`example/diagnostics/spin-lock.rtsl` is the minimal single-spin-lock model.
+`examples/ptpn/diagnostics/spin-lock.rtsl` is the minimal single-spin-lock model.
 The reproduction command is:
 
 ```bash
-./build/ptpn rtsl -f example/diagnostics/spin-lock.rtsl \
+./build/ptpn rtsl -f examples/ptpn/diagnostics/spin-lock.rtsl \
     --debug --export-ptpn /tmp/spin.ptpn.dot
 ```
 

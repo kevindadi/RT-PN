@@ -29,7 +29,7 @@ try {
     ptpn,
     [
       "tdg",
-      "-f", "example/motivating-examples/hw.json",
+      "-f", path.join(paths.root, "examples", "ptpn", "motivating-examples", "hw.json"),
       "--no-analysis",
       "--export-ptpn", out("hw.ptpn.dot"),
       "--export-wcet", out("hw.wcet.json"),

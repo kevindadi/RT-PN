@@ -223,7 +223,7 @@ PTPN_MINGW_BIN        # MinGW runtime `bin` directory, if needed
 A model can also be opened by launching the app with a path argument:
 
 ```bash
-rt-pn.exe example/motivating-examples/hw.json
+rt-pn.exe examples/ptpn/motivating-examples/hw.json
 rt-pn.exe firmware.elf
 ```
 

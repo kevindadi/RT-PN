@@ -163,7 +163,7 @@ stray write in the analyzer cannot corrupt the JSON-RPC stream).
 RTSL is the primary entry point for humans and LLMs. The full language
 reference is [rtsl.md](rtsl.md); this section is the end-to-end workflow. The
 model below is the committed
-[`example/introduction/demo.rtsl`](../example/introduction/demo.rtsl):
+[`examples/ptpn/introduction/demo.rtsl`](../example/introduction/demo.rtsl):
 periodic and aperiodic tasks, a lock, a fork/join, and one `measured by llm`
 task that is deliberately left unmeasured.
 
@@ -208,7 +208,7 @@ system demo {
 ```bash
 # 1. Parse + validate only (no lowering, no analysis). Exit 0; the envelope's
 #    result.pending_measurements lists the unmeasured task.
-./build/ptpn check -f example/introduction/demo.rtsl --diagnostics json
+./build/ptpn check -f examples/ptpn/introduction/demo.rtsl --diagnostics json
 
 # 2. Fill the pending `measured by llm` task directly in the source:
 #      time measured by llm { runs 10, timeout 2 }          (before)
@@ -220,7 +220,7 @@ system demo {
 
 # 3. Full pipeline (after the pending task is filled): lower in process,
 #    analyze, export metrics.
-./build/ptpn rtsl -f example/introduction/demo.rtsl \
+./build/ptpn rtsl -f examples/ptpn/introduction/demo.rtsl \
     --export-tdg /tmp/demo.tdg.json --export-metrics metrics.json
 
 # 4. The exported TDG is ordinary input for the JSON pipeline.
@@ -406,7 +406,7 @@ bound. Heterogeneous tasks are never merged.
 
 ```bash
 # 6 identical tasks on 6 distinct cores: 792 states -> 34 states
-./build/ptpn tdg -f example/symmetry/symmetric-6t-6c.json \
+./build/ptpn tdg -f examples/ptpn/symmetry/symmetric-6t-6c.json \
   -m 10000000 --reduction symmetry --export-metrics metrics.json
 ```
 
@@ -443,14 +443,14 @@ JSON `configuration.policy` and `--policy` accept values such as:
 
 ```bash
 # TDG: analyze + export state-class graph and PTPN DOT
-./build/ptpn tdg -f example/l-bench/pipeline-40t-8c-5l.json \
+./build/ptpn tdg -f examples/ptpn/l-bench/pipeline-40t-8c-5l.json \
   --export-scg scg.dot --export-ptpn ptpn.dot -m 5000
 
 # TDG: larger benchmark (100 tasks, 20 cores, fork/join)
-./build/ptpn tdg -f example/l-bench/pipeline-100t-20c.json -m 10000
+./build/ptpn tdg -f examples/ptpn/l-bench/pipeline-100t-20c.json -m 10000
 
 # TDG: WCET summary only (no reachability)
-./build/ptpn tdg -f example/p-bench/initial.json \
+./build/ptpn tdg -f examples/ptpn/p-bench/initial.json \
   --no-analysis --export-wcet wcet.json
 
 # TDG: statically partitioned multi-core EDF/FIFO/LLF
@@ -467,26 +467,26 @@ JSON `configuration.policy` and `--policy` accept values such as:
 ./build/ptpn check -f model.rtsl --diagnostics json
 ./build/ptpn rtsl -f model.rtsl --export-tdg lowered.json --export-metrics metrics.json
 
-# l-bench: scaling experiments (example/run.py finds build/ptpn via .ptpn-build-dir)
-python3 example/run.py --lbench-cases pipeline-40t-8c-5l -m 5000000 --extrapolation
-python3 example/run.py --reviewer-case -m 20000
-python3 example/run.py --skip-suites --validate-tdg-only
+# l-bench: scaling experiments (examples/ptpn/run.py finds build/ptpn via .ptpn-build-dir)
+python3 examples/ptpn/run.py --lbench-cases pipeline-40t-8c-5l -m 5000000 --extrapolation
+python3 examples/ptpn/run.py --reviewer-case -m 20000
+python3 examples/ptpn/run.py --skip-suites --validate-tdg-only
 
 # p/s/t-bench: export PTPN/SCG DOT
-python3 example/run.py
-python3 example/run.py --suites p-bench t-bench --profiles ptpn
+python3 examples/ptpn/run.py
+python3 examples/ptpn/run.py --suites p-bench t-bench --profiles ptpn
 ```
 
 ## Example inputs
 
 | Directory | Contents |
 |-----------|----------|
-| [example/introduction/](../example/introduction/) | Small introductory RTSL model (`demo.rtsl`: periodic + aperiodic, lock, fork/join, pending measurement) |
-| [example/motivating-examples/](../example/motivating-examples/) | Motivating TDG examples |
-| [example/p-bench/](../example/p-bench/) | Priority / preemption benchmarks |
-| [example/s-bench/](../example/s-bench/) | Small scheduling benchmarks |
-| [example/t-bench/](../example/t-bench/) | Scalability benchmarks (`d-*.json`) |
-| [example/l-bench/](../example/l-bench/) | Progressive pipeline benchmarks (`pipeline-*t-*c.json`, 10–100 tasks, fork/join, scaled shared mutexes; `pipeline-40t-8c-5l.json` for the 5-lock reviewer case) |
-| [example/symmetry/](../example/symmetry/) | Symmetric task sets for `--reduction symmetry` |
+| [examples/ptpn/introduction/](../example/introduction/) | Small introductory RTSL model (`demo.rtsl`: periodic + aperiodic, lock, fork/join, pending measurement) |
+| [examples/ptpn/motivating-examples/](../example/motivating-examples/) | Motivating TDG examples |
+| [examples/ptpn/p-bench/](../example/p-bench/) | Priority / preemption benchmarks |
+| [examples/ptpn/s-bench/](../example/s-bench/) | Small scheduling benchmarks |
+| [examples/ptpn/t-bench/](../example/t-bench/) | Scalability benchmarks (`d-*.json`) |
+| [examples/ptpn/l-bench/](../example/l-bench/) | Progressive pipeline benchmarks (`pipeline-*t-*c.json`, 10–100 tasks, fork/join, scaled shared mutexes; `pipeline-40t-8c-5l.json` for the 5-lock reviewer case) |
+| [examples/ptpn/symmetry/](../example/symmetry/) | Symmetric task sets for `--reduction symmetry` |
 
 TDG JSON format: [json_format.md](json_format.md).

@@ -17,8 +17,8 @@ The following dependencies are fetched at configure time with `FetchContent`:
 [nlohmann/json](https://github.com/nlohmann/json) (JSON),
 [spdlog](https://github.com/gabime/spdlog) / [fmt](https://github.com/fmtlib/fmt)
 (logging), and [GoogleTest](https://github.com/google/googletest) (tests).
-Python 3.8+ is only needed for the helper scripts (`example/build.py`,
-`example/run.py`).
+Python 3.8+ is only needed for the helper scripts (`examples/ptpn/build.py`,
+`examples/ptpn/run.py`).
 
 **Linux (Debian/Ubuntu) — system Boost:**
 
@@ -116,9 +116,9 @@ Executables:
 The Windows presets place the same binaries under `cmake-build-debug-mingw/`
 (or `cmake-build-release-mingw/`).
 
-### Helper script (`example/build.py`)
+### Helper script (`examples/ptpn/build.py`)
 
-The helper script lives in `example/` and resolves the repository root from its
+The helper script lives in `examples/ptpn/` and resolves the repository root from its
 own location. It bootstraps vcpkg under `~/vcpkg` when it is missing (unless
 `--skip-vcpkg` is given), configures CMake with Ninja and a host-matching
 triplet, builds, and writes a `.ptpn-build-dir` marker at the repository root.
@@ -144,12 +144,12 @@ triplet, builds, and writes a `.ptpn-build-dir` marker at the repository root.
 | `--configure-only` | Configure only; skip the build |
 | `--test` | Run `ctest` after a successful build |
 
-`example/run.py` resolves the `ptpn` binary in this order:
+`examples/ptpn/run.py` resolves the `ptpn` binary in this order:
 
 1. `--ptpn PATH` if passed explicitly
 2. `$PTPN_BUILD_DIR` (CMake build directory)
 3. the `.ptpn-build-dir` marker at the repository root (written by
-   `example/build.py`)
+   `examples/ptpn/build.py`)
 4. fallback: `build/ptpn`
 
 ## Tests
@@ -163,7 +163,7 @@ ctest --test-dir build --output-on-failure
 
 Run the binary from the repository root: tests are discovered with
 `gtest_discover_tests` and a working directory of the repo root, and they
-reference `example/...` and `test/golden/...` relative to it. Golden
+reference `examples/ptpn/...` and `test/golden/...` relative to it. Golden
 comparisons are skipped on builds that do not use libstdc++ and on Windows
 (CRLF), so regenerate goldens only on POSIX libstdc++ builds.
 
@@ -193,7 +193,7 @@ docker build -f docs/Dockerfile --platform linux/amd64 -t ptpn .
 Build arguments: `UBUNTU_VERSION` (default `24.04`) and `CMAKE_BUILD_TYPE`
 (default `Release`).
 
-Mount your inputs under `/data`; for example, mount the bundled `example/`
+Mount your inputs under `/data`; for example, mount the bundled `examples/ptpn/`
 directory and analyze an l-bench case:
 
 ```bash
