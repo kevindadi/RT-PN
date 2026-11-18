@@ -115,6 +115,20 @@ export interface ProjectFile {
   savedAt: string;
 }
 
+export interface SweepEntry {
+  policy: string;
+  label: string;
+  status: string;
+  ok: boolean;
+  schedulable: boolean | null;
+  states: number;
+  maxWcrt: number | null;
+  deadlocks: number;
+  elapsedMs: number;
+  partial: boolean;
+  error: string;
+}
+
 export interface ElfWorkflow {
   elf_path: string;
   file_size: number;

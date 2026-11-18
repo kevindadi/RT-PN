@@ -144,6 +144,10 @@ The new `SEMANTICS` stage documents the selected policy formally:
   preemption/lock and restriction notes;
 - a live animated firing-rule diagram (elapse → enabling → filter → fire →
   canonicalize) rendered with the policy's selection rule;
+- `RUN SWEEP`: analyzes the loaded model once per policy with the current tie
+  mode (bounded to the smaller of the current budget and 8 000 states, 30 s per
+  policy) and lists verdict, max WCRT, state count, deadlocks and elapsed time
+  side by side; the table is included in exported MD/JSON reports;
 - `ptpn describe` output for the loaded model (`DESCRIBE MODEL`), i.e. the
   analyser's own restatement of effective priorities, cores and lock nesting.
 

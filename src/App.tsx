@@ -55,6 +55,7 @@ import type {
   ProjectFile,
   RunRecord,
   Stage,
+  SweepEntry,
   TraceStep,
   Workflow,
   WorkbenchDocs,
@@ -224,6 +225,7 @@ function buildMarkdownReport(
   budgets: Budget,
   policy: string,
   tie: string,
+  sweep: SweepEntry[] = [],
 ): string {
   const result = payload.result;
   const metrics = result.metrics ?? {};
@@ -256,6 +258,19 @@ function buildMarkdownReport(
     "```",
     "",
   ];
+  if (sweep.length > 0) {
+    lines.push(
+      "## Policy sweep",
+      "",
+      "| policy | verdict | max WCRT | states | deadlocks | elapsed |",
+      "| --- | --- | ---: | ---: | ---: | ---: |",
+      ...sweep.map(
+        (entry) =>
+          `| ${entry.label} | ${entry.status} | ${entry.maxWcrt ?? "—"} | ${entry.states} | ${entry.deadlocks} | ${entry.elapsedMs} ms |`,
+      ),
+      "",
+    );
+  }
   if (payload.deadlock_trace && payload.deadlock_trace.length > 0) {
     lines.push("## Deadlock counterexample", "", "```text", deadlockTraceText(payload.deadlock_trace), "```", "");
   }
@@ -563,6 +578,9 @@ export default function App() {
   const [tie, setTie] = useState("fifo");
   const [describeText, setDescribeText] = useState("");
   const [describeBusy, setDescribeBusy] = useState(false);
+  const [sweep, setSweep] = useState<SweepEntry[]>([]);
+  const [sweepBusy, setSweepBusy] = useState(false);
+  const [sweepProgress, setSweepProgress] = useState({ done: 0, total: 0 });
   const runStartedRef = useRef(0);
   const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -703,6 +721,7 @@ export default function App() {
       setPendingInputs({});
       setAllocation(null);
       setDescribeText("");
+      setSweep([]);
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
@@ -777,9 +796,9 @@ export default function App() {
       if (!analysis) return;
       const contents =
         format === "md"
-          ? buildMarkdownReport(analysis, budget, policy, tie)
+          ? buildMarkdownReport(analysis, budget, policy, tie, sweep)
           : JSON.stringify(
-              { budgets: budget, policy, tie, result: analysis.result, docs: analysis.docs },
+              { budgets: budget, policy, tie, sweep, result: analysis.result, docs: analysis.docs },
               null,
               2,
             );
@@ -796,7 +815,7 @@ export default function App() {
         setError(String(reason));
       }
     },
-    [analysis, budget, policy, tie],
+    [analysis, budget, policy, tie, sweep],
   );
 
   const refreshDescription = useCallback(async () => {
@@ -810,6 +829,75 @@ export default function App() {
       setDescribeBusy(false);
     }
   }, [currentPath, policy, tie]);
+
+  const sweepMaxStates = Math.min(budget.maxStates, 8_000);
+  const sweepTimeoutSecs = Math.min(budget.timeoutSecs || 30, 30);
+
+  const runSweep = useCallback(async () => {
+    if (!currentPath || isBinary || sweepBusy) return;
+    setSweepBusy(true);
+    setSweep([]);
+    setError(null);
+    const entries: SweepEntry[] = [];
+    for (const [index, candidate] of SCHEDULING_POLICIES.entries()) {
+      setSweepProgress({ done: index, total: SCHEDULING_POLICIES.length });
+      let entry: SweepEntry = {
+        policy: candidate.id,
+        label: candidate.label,
+        status: "ERROR",
+        ok: false,
+        schedulable: null,
+        states: 0,
+        maxWcrt: null,
+        deadlocks: 0,
+        elapsedMs: 0,
+        partial: false,
+        error: "",
+      };
+      try {
+        const payload = await analyzeModel(currentPath, {
+          max_states: sweepMaxStates,
+          timeout_secs: sweepTimeoutSecs,
+          max_memory_mb: budget.maxMemoryMb,
+          policy: candidate.id,
+          tie,
+        });
+        const result = payload.result;
+        const metrics = (result.metrics ?? {}) as Metrics;
+        const deadlocks = metrics.deadlock_states?.length ?? 0;
+        const wcrts = (metrics.tasks ?? [])
+          .map((task) => task.wcrt)
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+        const status = !result.ok
+          ? "ERROR"
+          : result.partial || result.timed_out
+            ? "PARTIAL"
+            : deadlocks > 0
+              ? "DEADLOCK"
+              : metrics.schedulable === false
+                ? "UNSCHEDULABLE"
+                : "OK";
+        entry = {
+          ...entry,
+          status,
+          ok: result.ok,
+          schedulable: metrics.schedulable ?? null,
+          states: result.scg?.nodes?.length ?? 0,
+          maxWcrt: wcrts.length > 0 ? Math.max(...wcrts) : null,
+          deadlocks,
+          elapsedMs: result.elapsed_ms,
+          partial: result.partial,
+          error: result.ok ? "" : result.error,
+        };
+      } catch (reason) {
+        entry = { ...entry, status: "ERROR", error: String(reason) };
+      }
+      entries.push(entry);
+      setSweep([...entries]);
+    }
+    setSweepProgress({ done: SCHEDULING_POLICIES.length, total: SCHEDULING_POLICIES.length });
+    setSweepBusy(false);
+  }, [currentPath, isBinary, budget.maxMemoryMb, tie, sweepBusy, sweepMaxStates, sweepTimeoutSecs]);
 
   const runBinary = useCallback(
     async (path: string, newProject: boolean) => {
@@ -1569,9 +1657,16 @@ export default function App() {
               {activeStage === "semantics" && !isBinary ? (
                 <SemanticsStage
                   policy={policyInfo}
+                  tie={tie}
                   describeText={describeText}
                   describeBusy={describeBusy}
                   onRefreshDescription={() => void refreshDescription()}
+                  sweep={sweep}
+                  sweepBusy={sweepBusy}
+                  sweepProgress={sweepProgress}
+                  sweepBudget={{ maxStates: sweepMaxStates, timeoutSecs: sweepTimeoutSecs }}
+                  canSweep={Boolean(currentPath) && !isBinary}
+                  onRunSweep={() => void runSweep()}
                 />
               ) : doc ? (
                 <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />

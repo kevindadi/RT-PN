@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import type { SweepEntry } from "./types";
+
 export interface SchedulingPolicy {
   id: string;
   label: string;
@@ -267,14 +269,28 @@ function SemanticsAnimation({ policy }: { policy: SchedulingPolicy }) {
 
 export function SemanticsStage({
   policy,
+  tie,
   describeText,
   describeBusy,
   onRefreshDescription,
+  sweep,
+  sweepBusy,
+  sweepProgress,
+  sweepBudget,
+  canSweep,
+  onRunSweep,
 }: {
   policy: SchedulingPolicy;
+  tie: string;
   describeText: string;
   describeBusy: boolean;
   onRefreshDescription: () => void;
+  sweep: SweepEntry[];
+  sweepBusy: boolean;
+  sweepProgress: { done: number; total: number };
+  sweepBudget: { maxStates: number; timeoutSecs: number };
+  canSweep: boolean;
+  onRunSweep: () => void;
 }) {
   return (
     <div className="semantics">
@@ -352,6 +368,71 @@ export function SemanticsStage({
       </div>
 
       <SemanticsAnimation policy={policy} />
+
+      <section className="sem-sweep">
+        <div className="sem-sweep-head">
+          <div>
+            <div className="sem-eyebrow">POLICY SWEEP</div>
+            <h3>Cross-policy comparison</h3>
+          </div>
+          <button
+            className="btn small accent"
+            disabled={!canSweep || sweepBusy}
+            onClick={onRunSweep}
+          >
+            {sweepBusy
+              ? `RUNNING ${sweepProgress.done}/${sweepProgress.total}`
+              : "RUN SWEEP"}
+          </button>
+        </div>
+        <p className="sem-sweep-note">
+          Runs the loaded model once per policy with the current tie mode
+          <span className="math"> {tie}</span>, bounded to{" "}
+          <span className="math">{sweepBudget.maxStates.toLocaleString()}</span> states and{" "}
+          <span className="math">{sweepBudget.timeoutSecs || "∞"} s</span> per policy. The
+          selected policy above is not changed.
+        </p>
+        {sweep.length === 0 ? (
+          <div className="faint">
+            {sweepBusy ? "sweeping policies…" : "run a sweep to compare verdicts, WCRT and state counts"}
+          </div>
+        ) : (
+          <table className="sem-sweep-table">
+            <thead>
+              <tr>
+                <th align="left">policy</th>
+                <th align="left">verdict</th>
+                <th align="right">max wcrt</th>
+                <th align="right">states</th>
+                <th align="right">deadlocks</th>
+                <th align="right">elapsed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sweep.map((entry) => (
+                <tr
+                  key={entry.policy}
+                  className={
+                    entry.status === "OK"
+                      ? "sweep-ok"
+                      : entry.status === "PARTIAL"
+                        ? "sweep-warn"
+                        : "sweep-bad"
+                  }
+                  title={entry.error || undefined}
+                >
+                  <td>{entry.label}</td>
+                  <td>{entry.status}</td>
+                  <td align="right">{entry.maxWcrt ?? "—"}</td>
+                  <td align="right">{entry.states}</td>
+                  <td align="right">{entry.deadlocks}</td>
+                  <td align="right">{entry.elapsedMs} ms</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <section className="sem-describe">
         <div className="sem-describe-head">
