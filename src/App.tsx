@@ -49,6 +49,7 @@ import { BinaryAnalysisView } from "./BinaryAnalysis";
 import { BinaryCfg } from "./BinaryCfg";
 import { BinaryCompare } from "./BinaryCompare";
 import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
+import { WorkflowGuide } from "./Guide";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
 import { Mermaid } from "./Mermaid";
@@ -612,6 +613,7 @@ export default function App() {
     title: string;
     footer: string;
   } | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
   const [cli, setCli] = useState<EngineHealth | null>(null);
   const [elf2tdg, setElf2tdg] = useState<EngineHealth | null>(null);
   const [budget, setBudget] = useState<Budget>({
@@ -1059,7 +1061,7 @@ export default function App() {
   }, [currentPath, isBinary, budget.maxMemoryMb, tie, sweepBusy, sweepMaxStates, sweepTimeoutSecs]);
 
   const runBinary = useCallback(
-    async (path: string, newProject: boolean) => {
+    async (path: string, newProject: boolean, overrideOptions?: BinaryOptions) => {
       setPreview(null);
       setImagePreview(null);
       setMermaidPreview(null);
@@ -1081,7 +1083,7 @@ export default function App() {
       setCfgError(null);
       setWcetPath(null);
       try {
-        const payload = await analyzeElf(path, binaryOptions);
+        const payload = await analyzeElf(path, overrideOptions ?? binaryOptions);
         setBinary(payload);
         setBusy(false);
         setActiveStage("overview");
@@ -1536,6 +1538,9 @@ export default function App() {
             onClick={() => (isBinary ? void openBinaryDialog() : void openSpecDialog())}
           >
             <FolderOpen size={13} /> {isBinary ? "IMPORT" : "OPEN"}
+          </button>
+          <button className="btn" onClick={() => setGuideOpen(true)}>
+            ? GUIDE
           </button>
         </div>
       </header>
@@ -2144,7 +2149,14 @@ export default function App() {
               </div>
               <div className="stage-rule" />
               {activeStage === "overview" && isBinary && binary ? (
-                <BinaryOverview binary={binary} />
+                <BinaryOverview
+                  binary={binary}
+                  onApplyPreset={(cpu, freq) => {
+                    const next = { ...binaryOptions, cpu, freq };
+                    setBinaryOptions(next);
+                    if (currentPath) void runBinary(currentPath, false, next);
+                  }}
+                />
               ) : activeStage === "elf" && isBinary && binary ? (
                 <CodeStage
                   doc={
@@ -2373,6 +2385,8 @@ export default function App() {
           onClose={() => setCompareOpen(false)}
         />
       )}
+
+      {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
 
       {error && (
         <div className="toast" onClick={() => setError(null)}>

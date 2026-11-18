@@ -208,6 +208,7 @@ export interface BinaryFunctionCfg {
   calls: Array<Record<string, unknown>>;
   diagnostics: Array<Record<string, unknown>>;
   caveats: string[];
+  cfg_mermaid: string;
   json_path: string;
   warnings: string[];
 }

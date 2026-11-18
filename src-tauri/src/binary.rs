@@ -22,7 +22,6 @@ use serde_json::Value;
 
 use crate::graph::Graph;
 
-const SVG_LIMIT: usize = 8 * 1024 * 1024;
 const FUNCTION_LIMIT: usize = 120;
 const BLOCK_LIMIT: usize = 40;
 const CALL_LIMIT: usize = 12;
@@ -301,7 +300,7 @@ struct CfgStats {
     diagnostics: usize,
 }
 
-fn readable_cfg(cfg: &Value, json_path: &Path, dot_path: &Path, svg_path: Option<&Path>) -> (String, CfgStats) {
+fn readable_cfg(cfg: &Value, json_path: &Path) -> (String, CfgStats) {
     let functions = cfg
         .get("functions")
         .and_then(Value::as_array)
@@ -348,10 +347,6 @@ fn readable_cfg(cfg: &Value, json_path: &Path, dot_path: &Path, svg_path: Option
         diagnostics
     ));
     lines.push(format!("artifact    {}", json_path.display()));
-    lines.push(format!("dot         {}", dot_path.display()));
-    if let Some(svg) = svg_path {
-        lines.push(format!("preview     {}", svg.display()));
-    }
     if let Some(roots) = cfg.get("pointer_roots").and_then(Value::as_array) {
         if !roots.is_empty() {
             let shown: Vec<String> = roots
@@ -548,6 +543,7 @@ pub struct BinaryFunctionCfg {
     pub calls: Vec<Value>,
     pub diagnostics: Vec<Value>,
     pub caveats: Vec<String>,
+    pub cfg_mermaid: String,
     pub json_path: String,
     pub warnings: Vec<String>,
 }
@@ -693,6 +689,31 @@ pub fn function_cfg(
         .and_then(Value::as_array)
         .map(|items| items.iter().take(64).cloned().collect::<Vec<_>>())
         .unwrap_or_default();
+
+    // Mermaid source for the same function slice (rendered by the workbench).
+    let mermaid_path = directory.join(format!("{stem}.fn-{slug}.mmd"));
+    let mut mermaid_args = vec![
+        "--view".to_string(),
+        "cfg".to_string(),
+        "--format".to_string(),
+        "mermaid".to_string(),
+        "--function".to_string(),
+        selector.to_string(),
+        "--output".to_string(),
+        mermaid_path.display().to_string(),
+    ];
+    mermaid_args.extend(analysis_args(options));
+    mermaid_args.push(elf.display().to_string());
+    let cfg_mermaid = match run_tool(&program, &mermaid_args)
+        .and_then(|()| fs::read_to_string(&mermaid_path).map_err(|error| error.to_string()))
+    {
+        Ok(source) => source,
+        Err(error) => {
+            warnings.push(format!("mermaid CFG export failed: {error}"));
+            String::new()
+        }
+    };
+
     Ok(BinaryFunctionCfg {
         selector: selector.to_string(),
         name: text(&function, "primary_name"),
@@ -712,6 +733,7 @@ pub fn function_cfg(
         calls,
         diagnostics,
         caveats,
+        cfg_mermaid,
         json_path: json_path.display().to_string(),
         warnings,
     })
@@ -728,17 +750,15 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
     let stem = sanitized_stem(elf);
     let elf_mmd = directory.join(format!("{stem}.elf.mmd"));
     let cfg_json = directory.join(format!("{stem}.cfg.json"));
-    let cfg_dot = directory.join(format!("{stem}.cfg.dot"));
-    let cfg_svg = directory.join(format!("{stem}.cfg.svg"));
 
-    let mut warnings = Vec::new();
+    let warnings = Vec::new();
 
     // 1. Loader view: readable ELF layout (Mermaid source file).
     run_tool(&program, &elf_view_args(elf, &elf_mmd, options))?;
 
-    // 2. CFG views: readable JSON plus a DOT rendering source.
+    // 2. CFG: one JSON export carries everything the workspace needs (DOT/SVG
+    // rendering is deferred: it made the initial load noticeably slower).
     run_tool(&program, &cfg_json_args(elf, &cfg_json, options))?;
-    run_tool(&program, &cfg_dot_args(elf, &cfg_dot, options))?;
 
     let layout = fs::read_to_string(&elf_mmd)
         .map_err(|error| format!("cannot read {}: {error}", elf_mmd.display()))?;
@@ -747,51 +767,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
     let cfg: Value = serde_json::from_str(&cfg_source)
         .map_err(|error| format!("invalid CFG JSON from elf2tdg: {error}"))?;
 
-    // 3. Preview image: render the DOT with Graphviz when it is available.
-    let rendered = match find_dot() {
-        Some(dot) => match run_tool(
-            &dot,
-            &[
-                "-Tsvg".to_string(),
-                cfg_dot.display().to_string(),
-                "-o".to_string(),
-                cfg_svg.display().to_string(),
-            ],
-        ) {
-            Ok(()) => match fs::read_to_string(&cfg_svg) {
-                Ok(svg) if svg.len() <= SVG_LIMIT => Some(svg),
-                Ok(svg) => {
-                    warnings.push(format!(
-                        "preview image is {} bytes (limit {SVG_LIMIT}); using the interactive graph instead",
-                        svg.len()
-                    ));
-                    None
-                }
-                Err(error) => {
-                    warnings.push(format!("cannot read rendered preview: {error}"));
-                    None
-                }
-            },
-            Err(error) => {
-                warnings.push(format!("Graphviz failed: {error}"));
-                None
-            }
-        },
-        None => {
-            warnings.push(
-                "Graphviz `dot` was not found; the preview falls back to the interactive graph"
-                    .to_string(),
-            );
-            None
-        }
-    };
-
-    let (cfg_text, stats) = readable_cfg(
-        &cfg,
-        &cfg_json,
-        &cfg_dot,
-        rendered.as_ref().map(|_| cfg_svg.as_path()),
-    );
+    let (cfg_text, stats) = readable_cfg(&cfg, &cfg_json);
     let graph = cfg_graph(&cfg);
     let elf_view = elf_view_text(elf, &elf_mmd, &layout);
 
@@ -878,12 +854,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         })
         .unwrap_or_default();
 
-    let artifacts = vec![
-        elf_mmd.display().to_string(),
-        cfg_json.display().to_string(),
-        cfg_dot.display().to_string(),
-        cfg_svg.display().to_string(),
-    ];
+    let artifacts = vec![elf_mmd.display().to_string(), cfg_json.display().to_string()];
 
     let model = timing
         .get("models")
@@ -938,7 +909,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         elf_view,
         elf_mermaid: layout,
         cfg_text,
-        cfg_svg: rendered.unwrap_or_default(),
+        cfg_svg: String::new(),
         cfg_graph: graph,
         functions: stats.functions,
         blocks: stats.blocks,

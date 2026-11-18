@@ -12,7 +12,30 @@ const formatCycles = (row: BinaryFunctionRow): string => {
   return `${min}–${max} cy`;
 };
 
-export function BinaryOverview({ binary }: { binary: ElfWorkflow }) {
+const ARCH_PRESETS: Record<string, { label: string; cpu: string; freq: string }> = {
+  thumb: { label: "Arm Cortex-M", cpu: "cortex-m4", freq: "168MHz" },
+  aarch64: { label: "Arm AArch64", cpu: "aarch64", freq: "1GHz" },
+  riscv: { label: "RISC-V", cpu: "riscv32", freq: "100MHz" },
+  riscv32: { label: "RISC-V 32", cpu: "riscv32", freq: "100MHz" },
+  "x86-64": { label: "x86-64", cpu: "x86-64", freq: "3GHz" },
+  x86_64: { label: "x86-64", cpu: "x86-64", freq: "3GHz" },
+};
+
+function presetForArch(arch: string): { label: string; cpu: string; freq: string } | null {
+  const normalized = arch.toLowerCase();
+  const direct = ARCH_PRESETS[normalized];
+  if (direct) return direct;
+  const match = Object.entries(ARCH_PRESETS).find(([key]) => normalized.includes(key));
+  return match ? match[1] : null;
+}
+
+export function BinaryOverview({
+  binary,
+  onApplyPreset,
+}: {
+  binary: ElfWorkflow;
+  onApplyPreset: (cpu: string, freq: string) => void;
+}) {
   const timing = binary.timing as Record<string, unknown>;
   const image = binary.image;
   const models = Array.isArray(timing.models)
@@ -34,6 +57,8 @@ export function BinaryOverview({ binary }: { binary: ElfWorkflow }) {
   );
   const model = models[0] ?? {};
   const firstDomain = domains[0] ?? {};
+  const arch = text(image.arch);
+  const preset = presetForArch(arch);
 
   return (
     <div className="bin-overview">
@@ -114,6 +139,25 @@ export function BinaryOverview({ binary }: { binary: ElfWorkflow }) {
           </div>
         </section>
       </div>
+
+      {preset && (
+        <section className="bin-card bin-card-wide bin-arch-banner">
+          <div className="bin-arch-text">
+            <span className="sem-eyebrow">DETECTED ARCHITECTURE</span>
+            <b>
+              {arch || "unknown"} → preset {preset.label} · {preset.cpu} @ {preset.freq}
+            </b>
+            <span className="faint">
+              Applying the preset sets the CPU timing model and default frequency; you can
+              edit both in ANALYSIS PROFILE before running, and override instruction
+              costs with a board profile.
+            </span>
+          </div>
+          <button className="btn small accent" onClick={() => onApplyPreset(preset.cpu, preset.freq)}>
+            APPLY PRESET &amp; RUN
+          </button>
+        </section>
+      )}
 
       {binary.caveats.length > 0 && (
         <section className="bin-caveats">

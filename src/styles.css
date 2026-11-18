@@ -3354,6 +3354,188 @@ textarea {
   color: #67e8a2 !important;
 }
 
+/* ---------- unified JetBrains Mono typography ---------- */
+
+:root {
+  --font-ui: "JetBrains Mono", "Cascadia Code", "JetBrains Mono NL", Consolas, monospace;
+  --font-display: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+
+html,
+body,
+#root,
+.app,
+.chooser,
+.app *,
+.chooser *,
+.mermaid-overlay *,
+.guide-overlay * {
+  font-family: var(--font-ui) !important;
+}
+
+/* ---------- CFG view tabs ---------- */
+
+.cfg-tabs {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cfg-text,
+.cfg-mermaid {
+  flex: 1 1 auto;
+  min-height: 320px;
+  margin-top: 10px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: #08111f;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.cfg-text {
+  margin: 10px 0 0;
+  color: #cfe6ff;
+  font-family: var(--font-mono) !important;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.cfg-mermaid {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.cfg-mermaid .mmd {
+  width: 100%;
+}
+
+.bin-arch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-color: #4a3f8f;
+  background: linear-gradient(180deg, rgba(30, 26, 56, 0.95), rgba(12, 18, 34, 0.95));
+}
+
+.bin-arch-banner .bin-arch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bin-arch-banner b {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #d9ccff;
+}
+
+/* ---------- workflow guide modal ---------- */
+
+.guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 26px;
+  background: rgba(4, 9, 16, 0.84);
+  backdrop-filter: blur(4px);
+}
+
+.guide-dialog {
+  width: min(1020px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  border: 1px solid #244a73;
+  border-radius: 12px;
+  background: #08111f;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  padding: 20px 22px 24px;
+}
+
+.guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.guide-head h2 {
+  margin: 4px 0 0;
+  font-size: 20px;
+  letter-spacing: -0.3px;
+  color: #eef6ff;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.guide-section {
+  padding: 14px 16px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(16, 26, 48, 0.96), rgba(9, 18, 32, 0.96));
+}
+
+.guide-section h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #cfe6ff;
+}
+
+.guide-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  counter-reset: guide;
+}
+
+.guide-steps li {
+  position: relative;
+  padding-left: 28px;
+  color: #a9bfd6;
+  font-size: 11px;
+  line-height: 1.55;
+  counter-increment: guide;
+}
+
+.guide-steps li::before {
+  content: counter(guide);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #4fa3ff;
+  border-radius: 50%;
+  color: #9fd0ff;
+  font-size: 8.5px;
+}
+
+.guide-section.binary .guide-steps li::before {
+  border-color: #b49bff;
+  color: #d9ccff;
+}
+
+.guide-steps b {
+  color: #dcecff;
+  font-weight: 500;
+}
+
 /* ---------- compact analysis sidebar ---------- */
 
 .side-summary {

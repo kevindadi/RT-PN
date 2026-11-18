@@ -11,11 +11,66 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 
+import { Mermaid } from "./Mermaid";
 import type {
   BinaryCfgBlock,
   BinaryCfgEdge,
   BinaryFunctionCfg,
 } from "./types";
+
+const str = (value: unknown): string => (typeof value === "string" ? value : "");
+
+function cfgText(cfg: BinaryFunctionCfg): string {
+  const lines: string[] = [];
+  const source = cfg.source ?? {};
+  const instructionCount = cfg.blocks.reduce(
+    (sum, block) => sum + (block.instructions?.length ?? 0),
+    0,
+  );
+  lines.push(`${cfg.name || cfg.selector}  @ ${cfg.address || "—"}`);
+  lines.push(
+    `${cfg.kind || "function"} · ${cfg.language || "—"} · ` +
+      `${cfg.blocks.length} blocks · ${cfg.edges.length} edges · ${instructionCount} instructions`,
+  );
+  const file = str(source.file);
+  if (file) lines.push(`source: ${file}:${str(source.line)}`);
+  lines.push("", "BLOCKS");
+  for (const block of cfg.blocks) {
+    const cyclesMin = block.cycles?.min;
+    const cyclesMax = block.cycles?.max;
+    const cycles =
+      cyclesMin === undefined && cyclesMax === undefined
+        ? ""
+        : `  cycles ${cyclesMin ?? "?"}–${cyclesMax ?? "?"}`;
+    lines.push(
+      `  ${block.address ?? block.id}  size=${block.size ?? "?"}  ` +
+        `${block.terminator ?? "fallthrough"}${cycles}`,
+    );
+    for (const instruction of block.instructions ?? []) {
+      const sourceLocation = instruction.source?.file
+        ? `   ; ${instruction.source.file}:${instruction.source.line ?? "?"}`
+        : "";
+      const text =
+        instruction.text ??
+        `${instruction.mnemonic ?? ""} ${instruction.operands ?? ""}`.trim();
+      lines.push(`    ${instruction.address ?? "—"}  ${text}${sourceLocation}`);
+    }
+    if ((block.calls ?? []).length > 0) {
+      const targets = (block.calls ?? [])
+        .map((call) => {
+          const target =
+            (call.target_function as string | undefined) ??
+            (call.target as string | undefined) ??
+            (call.site as string | undefined);
+          return target ?? "call";
+        })
+        .join(", ");
+      lines.push(`    -> ${targets}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
 
 type CfgNodeData = {
   block: BinaryCfgBlock;
@@ -222,6 +277,7 @@ export function BinaryCfg({
   onReload: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<"graph" | "text" | "mmd">("graph");
 
   useEffect(() => {
     setSelectedId(cfg?.entry ?? cfg?.blocks[0]?.id ?? null);
@@ -280,9 +336,6 @@ export function BinaryCfg({
     <div className="bin-cfg">
       <div className="cfg-toolbar">
         <div className="cfg-toolbar-title">
-          <div className="sem-eyebrow">
-            {cfg.kind || "function"} · {cfg.language || "—"} · SCHEMA {cfg.source ? "" : ""}
-          </div>
           <h3>{cfg.name || cfg.selector}</h3>
           <div className="mono faint">
             {cfg.address || "—"} · {cfg.blocks.length} blocks · {cfg.edges.length} edges ·{" "}
@@ -291,6 +344,23 @@ export function BinaryCfg({
           </div>
         </div>
         <div className="cfg-toolbar-actions">
+          <div className="cfg-tabs">
+            {(
+              [
+                ["graph", "GRAPH"],
+                ["text", "TEXT"],
+                ["mmd", "MMD"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                className={`btn small ${view === value ? "accent" : ""}`}
+                onClick={() => setView(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button className="btn small" onClick={onReload}>
             RELOAD SLICE
           </button>
@@ -300,28 +370,44 @@ export function BinaryCfg({
         </div>
       </div>
 
-      <div className="cfg-graph">
-        {pathSet.size > 0 && (
-          <div className="cfg-path-badge">
-            WCET LONGEST PATH · {pathSet.size} blocks highlighted
+      {view === "graph" ? (
+        <>
+          <div className="cfg-graph">
+            {pathSet.size > 0 && (
+              <div className="cfg-path-badge">
+                WCET LONGEST PATH · {pathSet.size} blocks highlighted
+              </div>
+            )}
+            <ReactFlow
+              nodes={nodes}
+              edges={layout.edges}
+              nodeTypes={nodeTypes}
+              fitView
+              minZoom={0.2}
+              maxZoom={1.6}
+              onNodeClick={(_, node) => setSelectedId(node.id)}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background gap={22} size={1} color="#14283f" />
+              <Controls showInteractive={false} />
+            </ReactFlow>
           </div>
-        )}
-        <ReactFlow
-          nodes={nodes}
-          edges={layout.edges}
-          nodeTypes={nodeTypes}
-          fitView
-          minZoom={0.2}
-          maxZoom={1.6}
-          onNodeClick={(_, node) => setSelectedId(node.id)}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={22} size={1} color="#14283f" />
-          <Controls showInteractive={false} />
-        </ReactFlow>
-      </div>
 
-      {selectedBlock && <BlockInstructions block={selectedBlock} />}
+          {selectedBlock && <BlockInstructions block={selectedBlock} />}
+        </>
+      ) : view === "text" ? (
+        <pre className="cfg-text">{cfgText(cfg)}</pre>
+      ) : (
+        <div className="cfg-mermaid">
+          {cfg.cfg_mermaid ? (
+            <Mermaid chart={cfg.cfg_mermaid} />
+          ) : (
+            <div className="faint">
+              No Mermaid CFG was produced for this function. Use TEXT or GRAPH.
+            </div>
+          )}
+        </div>
+      )}
 
       {cfg.caveats.length > 0 && (
         <div className="bin-caveats cfg-caveats">
