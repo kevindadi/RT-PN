@@ -5,6 +5,7 @@ mod engine;
 mod graph;
 mod model;
 mod workbench;
+mod workspace;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -778,6 +779,41 @@ async fn analyze_elf(
 }
 
 #[tauri::command]
+async fn workspace_save_project(
+    name: String,
+    elf_path: String,
+    options: serde_json::Value,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace::save_project(&name, &elf_path, &options, &payload)
+    })
+    .await
+    .map_err(|error| format!("workspace worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn workspace_recent(limit: Option<u32>) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || workspace::recent(limit))
+        .await
+        .map_err(|error| format!("workspace worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn workspace_open_project(id: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || workspace::open_project(&id))
+        .await
+        .map_err(|error| format!("workspace worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn workspace_delete_project(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || workspace::delete_project(&id))
+        .await
+        .map_err(|error| format!("workspace worker failed: {error}"))?
+}
+
+#[tauri::command]
 async fn binary_function(
     path: String,
     selector: String,
@@ -916,6 +952,10 @@ pub fn run() {
             resolve_cli_path,
             resolve_elf2tdg_path,
             startup_paths,
+            workspace_delete_project,
+            workspace_open_project,
+            workspace_recent,
+            workspace_save_project,
             write_text_file
         ])
         .run(tauri::generate_context!())

@@ -213,6 +213,18 @@ export interface BinaryFunctionCfg {
   warnings: string[];
 }
 
+export interface WorkspaceProject {
+  id: string;
+  name: string;
+  elf_path?: string;
+  arch?: string;
+  functions?: number;
+  profile?: string;
+  latest_wcet_root?: string;
+  latest_wcet_cycles?: number;
+  last_opened?: number;
+}
+
 export interface BinaryProfile {
   name: string;
   path: string;

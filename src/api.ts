@@ -13,6 +13,7 @@ import type {
   EngineInfo,
   FilledSource,
   PendingMeasurement,
+  WorkspaceProject,
 } from "./types";
 
 export async function pickSpecification(): Promise<string | null> {
@@ -126,6 +127,38 @@ export function analyzeElf(path: string, options?: BinaryOptions): Promise<ElfWo
 /** Board timing profiles shipped with the binary example tree. */
 export function binaryProfiles(): Promise<BinaryProfile[]> {
   return invoke<BinaryProfile[]>("binary_profiles");
+}
+
+/** Save/refresh the persistent workspace project for an analyzed ELF. */
+export function workspaceSaveProject(
+  name: string,
+  elfPath: string,
+  options: BinaryOptions,
+  payload: ElfWorkflow,
+): Promise<WorkspaceProject> {
+  return invoke<WorkspaceProject>("workspace_save_project", {
+    name,
+    elfPath,
+    options,
+    payload,
+  });
+}
+
+/** Recent projects, indexed in SQLite for instant startup previews. */
+export function workspaceRecent(limit = 12): Promise<WorkspaceProject[]> {
+  return invoke<WorkspaceProject[]>("workspace_recent", { limit });
+}
+
+/** Restore an analyzed project from its cached text results (no re-analysis). */
+export function workspaceOpenProject(id: string): Promise<{
+  project: { id: string; elf_path?: string; options?: BinaryOptions };
+  payload: ElfWorkflow;
+}> {
+  return invoke("workspace_open_project", { id });
+}
+
+export function workspaceDeleteProject(id: string): Promise<void> {
+  return invoke("workspace_delete_project", { id });
 }
 
 /** One function's CFG slice for the interactive CFG explorer. */

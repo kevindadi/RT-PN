@@ -43,6 +43,9 @@ import {
   pickProject,
   pickSpecification,
   readTextFile,
+  workspaceOpenProject,
+  workspaceRecent,
+  workspaceSaveProject,
   writeTextFile,
 } from "./api";
 import { BinaryAnalysisView } from "./BinaryAnalysis";
@@ -75,6 +78,7 @@ import type {
   BinaryFunctionCfg,
   BinaryOptions,
   BinaryProfile,
+  WorkspaceProject,
 } from "./types";
 
 const STAGES: Record<
@@ -664,6 +668,13 @@ export default function App() {
       return [];
     }
   });
+  const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProject[]>([]);
+
+  useEffect(() => {
+    void workspaceRecent(12)
+      .then(setWorkspaceProjects)
+      .catch(() => undefined);
+  }, [hub, workflow]);
 
   useEffect(() => {
     try {
@@ -1111,9 +1122,15 @@ export default function App() {
       setCfgError(null);
       setWcetPath(null);
       setBinary(null);
+      const activeOptions = overrideOptions ?? binaryOptions;
       try {
-        const payload = await analyzeElf(path, overrideOptions ?? binaryOptions);
+        const payload = await analyzeElf(path, activeOptions);
         setBinary(payload);
+        setCurrentPath(path);
+        void workspaceSaveProject(fileName(path), path, activeOptions, payload)
+          .then(() => workspaceRecent(12))
+          .then(setWorkspaceProjects)
+          .catch(() => undefined);
         setCurrentPath(path);
         setBusy(false);
         setActiveStage("overview");
@@ -1342,6 +1359,33 @@ export default function App() {
     if (path) await runBinary(path, true);
   }, [runBinary]);
 
+  const openWorkspaceProject = useCallback(async (id: string) => {
+    try {
+      const restored = await workspaceOpenProject(id);
+      setWorkflow("binary");
+      setHub(false);
+      setAnalysis(null);
+      setBinary(restored.payload);
+      setCurrentPath(restored.project.elf_path ?? null);
+      setBinaryOptions((restored.project.options ?? {}) as BinaryOptions);
+      setActiveStage("overview");
+      setFunctionCfg(null);
+      setCfgSelector(null);
+      setCfgError(null);
+      setWcetPath(null);
+      setStatus({ text: "PROJECT RESTORED", tone: "violet" });
+      setWindowTitle(fileName(restored.project.elf_path ?? "project"));
+      setDetail({
+        title: "PROJECT RESTORED",
+        body:
+          `${restored.project.elf_path ?? ""}\n\n` +
+          "Cached text results loaded from the SQLite workspace — no re-analysis was run.",
+      });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, []);
+
   const openPath = useCallback(
     (path: string) => {
       if (isBinaryPath(path)) {
@@ -1529,8 +1573,41 @@ export default function App() {
           onSpecExample={() => void openExample()}
           onBinaryExample={() => void openElfExample()}
         />
+        {workspaceProjects.length > 0 && (
+          <section className="chooser-recent">
+            <div className="chooser-section-head">
+              <div>
+                <div className="sem-eyebrow">RECENT PROJECTS · SQLITE WORKSPACE</div>
+                <h2>Open a cached analysis</h2>
+              </div>
+              <span className="faint">{workspaceProjects.length} indexed</span>
+            </div>
+            <div className="chooser-recent-list">
+              {workspaceProjects.map((project) => (
+                <button
+                  key={project.id}
+                  className="project-card"
+                  onClick={() => void openWorkspaceProject(project.id)}
+                  title={project.elf_path ?? ""}
+                >
+                  <b>{project.name}</b>
+                  <small>
+                    {project.arch || "—"} · {project.functions ?? "?"} functions ·{" "}
+                    {project.profile || "no board profile"}
+                  </small>
+                  <span className="mono faint">
+                    {project.latest_wcet_root
+                      ? `WCET ${project.latest_wcet_root} · ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
+                      : "no WCET result in the last run"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         <footer className="chooser-foot">
-          RT-PN 0.2.3 · results workspace tabs · Two independent workspaces.
+          RT-PN 0.3.0 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2656,6 +2733,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
