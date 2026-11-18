@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 
+import { writeTextFile } from "./api";
+import { buildReplayHtml, type ReplayExport } from "./replayExport";
 import type { StateGraph, TraceStep } from "./types";
 
 interface ReplayStep {
@@ -111,12 +114,26 @@ function shortestPath(scg: StateGraph, targetPosition: number): ReplayStep[] | n
   });
 }
 
-export function ScgReplay({ scg, trace }: { scg: StateGraph; trace: TraceStep[] | null }) {
+export function ScgReplay({
+  scg,
+  trace,
+  modelLabel,
+  policy,
+  tie,
+}: {
+  scg: StateGraph;
+  trace: TraceStep[] | null;
+  modelLabel?: string;
+  policy?: string;
+  tie?: string;
+}) {
   const hasTrace = Boolean(trace && trace.length > 0);
   const [target, setTarget] = useState(Math.max(scg.nodes.length - 1, 0));
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState("");
 
   useEffect(() => {
     setTarget(Math.max(scg.nodes.length - 1, 0));
@@ -162,6 +179,55 @@ export function ScgReplay({ scg, trace }: { scg: StateGraph; trace: TraceStep[] 
   const suspended = parseEntries(current.suspended);
   const last = steps.length - 1;
 
+  const replayPayload = (): ReplayExport => ({
+    version: 1,
+    model: modelLabel || "model",
+    policy: policy || "unknown",
+    tie: tie || "fifo",
+    mode: hasTrace ? "deadlock counterexample" : "shortest path",
+    generatedAt: new Date().toISOString(),
+    stepCount: steps.length,
+    steps: steps.map((step) => ({
+      state: step.state,
+      transition: step.transition,
+      marking: step.marking,
+      active: step.active,
+      suspended: step.suspended,
+      elapsed: step.elapsed,
+    })),
+  });
+
+  const exportReplay = async (format: "html" | "json") => {
+    setExporting(true);
+    setExportNote("");
+    try {
+      const payload = replayPayload();
+      const base =
+        (modelLabel || "replay")
+          .replace(/[^A-Za-z0-9._-]+/g, "_")
+          .replace(/^_+|_+$/g, "") || "replay";
+      const target = await save({
+        defaultPath: `${base}.replay.${format}`,
+        filters: [
+          {
+            name: format === "html" ? "Self-contained replay" : "Replay JSON",
+            extensions: [format],
+          },
+        ],
+      });
+      if (!target) return;
+      await writeTextFile(
+        target,
+        format === "html" ? buildReplayHtml(payload) : JSON.stringify(payload, null, 2),
+      );
+      setExportNote(`saved · ${target}`);
+    } catch (reason) {
+      setExportNote(String(reason));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="replay">
       <header className="replay-hero">
@@ -174,6 +240,23 @@ export function ScgReplay({ scg, trace }: { scg: StateGraph; trace: TraceStep[] 
           <span className="sem-badge">{steps.length} transitions</span>
           <span className="sem-badge math">start {steps[0].state}</span>
           <span className="sem-badge math">target {steps[last].state}</span>
+        </div>
+        <div className="replay-export-row">
+          <button
+            className="btn small"
+            disabled={exporting}
+            onClick={() => void exportReplay("html")}
+          >
+            EXPORT HTML
+          </button>
+          <button
+            className="btn small"
+            disabled={exporting}
+            onClick={() => void exportReplay("json")}
+          >
+            EXPORT JSON
+          </button>
+          {exportNote && <span className="replay-note">{exportNote}</span>}
         </div>
       </header>
 

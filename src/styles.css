@@ -1609,6 +1609,21 @@ button {
   animation: sem-rise 420ms ease-out both;
 }
 
+.replay-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.replay-note {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9.5px;
+  color: #7fb2e8;
+  word-break: break-all;
+}
+
 .replay-empty {
   padding: 40px;
   color: #8fa8c0;

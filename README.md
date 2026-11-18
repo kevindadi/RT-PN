@@ -160,6 +160,11 @@ step-forward/back, reset, speed and a clickable state timeline are available.
 Each step shows the marking (place tokens), the selected active set `E_pri`,
 suspended transitions, the fired transition and the elapsed time.
 
+`EXPORT HTML` writes a self-contained offline player (same panels/controls,
+autoplaying, no external assets) and `EXPORT JSON` writes the raw step data;
+both carry the model name and the scheduling policy/tie used, so a replay can
+be attached to a paper, review bundle or presentation.
+
 The EDF/FIFO/LLF notes reflect the engine's documented constraints (statically
 partitioned multi-core, no locks, deterministic segments for event-driven LLF).
 

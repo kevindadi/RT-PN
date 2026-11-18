@@ -1679,7 +1679,13 @@ export default function App() {
                   onRunSweep={() => void runSweep()}
                 />
               ) : activeStage === "replay" && !isBinary && analysis ? (
-                <ScgReplay scg={analysis.result.scg} trace={analysis.deadlock_trace} />
+                <ScgReplay
+                  scg={analysis.result.scg}
+                  trace={analysis.deadlock_trace}
+                  modelLabel={displayName}
+                  policy={policyInfo.label}
+                  tie={tie}
+                />
               ) : doc ? (
                 <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
               ) : (
