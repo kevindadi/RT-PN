@@ -5,6 +5,7 @@ import type {
   AllocationReport,
   AnalysisOptions,
   AnalysisPayload,
+  BinaryFunctionCfg,
   BinaryOptions,
   BinaryProfile,
   ElfWorkflow,
@@ -125,6 +126,19 @@ export function analyzeElf(path: string, options?: BinaryOptions): Promise<ElfWo
 /** Board timing profiles shipped with the binary example tree. */
 export function binaryProfiles(): Promise<BinaryProfile[]> {
   return invoke<BinaryProfile[]>("binary_profiles");
+}
+
+/** One function's CFG slice for the interactive CFG explorer. */
+export function binaryFunction(
+  path: string,
+  selector: string,
+  options?: BinaryOptions,
+): Promise<BinaryFunctionCfg> {
+  return invoke<BinaryFunctionCfg>("binary_function", {
+    path,
+    selector,
+    options: options ?? null,
+  });
 }
 
 export function resolveCliPath(): Promise<EngineInfo | null> {

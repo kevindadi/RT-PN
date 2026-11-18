@@ -516,6 +516,193 @@ fn cfg_dot_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<Str
     args
 }
 
+/// Single-function CFG slice for the interactive CFG explorer.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct BinaryFunctionCfg {
+    pub selector: String,
+    pub name: String,
+    pub demangled_name: String,
+    pub address: String,
+    pub size: u64,
+    pub kind: String,
+    pub language: String,
+    pub source: Value,
+    pub inline_frames: Vec<Value>,
+    pub entry: Option<String>,
+    pub blocks: Vec<Value>,
+    pub edges: Vec<Value>,
+    pub calls: Vec<Value>,
+    pub diagnostics: Vec<Value>,
+    pub caveats: Vec<String>,
+    pub json_path: String,
+    pub warnings: Vec<String>,
+}
+
+fn timing_caveats(timing: &Value) -> Vec<String> {
+    let mut caveats: Vec<String> = Vec::new();
+    let mut push = |caveat: &str| {
+        if !caveats.iter().any(|item| item == caveat) {
+            caveats.push(caveat.to_string());
+        }
+    };
+    if let Some(global) = timing.get("caveats").and_then(Value::as_array) {
+        for caveat in global.iter().filter_map(Value::as_str) {
+            push(caveat);
+        }
+    }
+    if let Some(models) = timing.get("models").and_then(Value::as_array) {
+        for model in models {
+            if let Some(items) = model.get("caveats").and_then(Value::as_array) {
+                for caveat in items.iter().filter_map(Value::as_str) {
+                    push(caveat);
+                }
+            }
+        }
+    }
+    caveats
+}
+
+fn sanitized_selector(selector: &str) -> String {
+    selector
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
+                character
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect()
+}
+
+/// Export one function's CFG (with instructions) for the interactive CFG stage.
+pub fn function_cfg(
+    elf: &Path,
+    selector: &str,
+    options: &BinaryOptions,
+) -> Result<BinaryFunctionCfg, String> {
+    let program = resolve_elf2tdg().ok_or_else(|| {
+        "elf2tdg CLI not found. Set ELF2TDG_BIN, or build it with `just engines`.".to_string()
+    })?;
+    let directory = artifact_dir(elf)?;
+    fs::create_dir_all(&directory).map_err(|error| {
+        format!(
+            "cannot create artifact directory {}: {error}",
+            directory.display()
+        )
+    })?;
+    let stem = sanitized_stem(elf);
+    let slug = sanitized_selector(selector);
+    let json_path = directory.join(format!("{stem}.fn-{slug}.json"));
+
+    let mut args = vec![
+        "--view".to_string(),
+        "cfg".to_string(),
+        "--format".to_string(),
+        "json".to_string(),
+        "--function".to_string(),
+        selector.to_string(),
+        "--output".to_string(),
+        json_path.display().to_string(),
+    ];
+    args.extend(analysis_args(options));
+    args.push(elf.display().to_string());
+    let mut warnings = Vec::new();
+    run_tool(&program, &args)?;
+    let source = fs::read_to_string(&json_path)
+        .map_err(|error| format!("cannot read {}: {error}", json_path.display()))?;
+    let cfg: Value = serde_json::from_str(&source)
+        .map_err(|error| format!("invalid CFG JSON from elf2tdg: {error}"))?;
+    let function = cfg
+        .get("functions")
+        .and_then(Value::as_array)
+        .and_then(|functions| functions.first())
+        .cloned()
+        .ok_or_else(|| format!("elf2tdg matched no function for selector `{selector}`"))?;
+    if cfg
+        .get("diagnostics_omitted")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        warnings.push("elf2tdg omitted some diagnostics (raise --max-diagnostics)".to_string());
+    }
+    let text = |value: &Value, key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let blocks = function
+        .get("blocks")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .take(200)
+                .map(|block| {
+                    let mut block = block.clone();
+                    if let Some(object) = block.as_object_mut() {
+                        if let Some(instructions) =
+                            object.get("instructions").and_then(Value::as_array).cloned()
+                        {
+                            let trimmed: Vec<Value> =
+                                instructions.into_iter().take(300).collect();
+                            object.insert("instructions".to_string(), Value::Array(trimmed));
+                        }
+                    }
+                    block
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let edges = function
+        .get("edges")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(600).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let calls = function
+        .get("recovered_calls")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(200).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let diagnostics = cfg
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(50).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let timing = cfg.get("timing").cloned().unwrap_or(Value::Null);
+    let caveats = timing_caveats(&timing);
+    let inline_frames = function
+        .get("inline_frames")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(64).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    Ok(BinaryFunctionCfg {
+        selector: selector.to_string(),
+        name: text(&function, "primary_name"),
+        demangled_name: text(&function, "demangled_name"),
+        address: text(&function, "address"),
+        size: function.get("size").and_then(Value::as_u64).unwrap_or(0),
+        kind: text(&function, "kind"),
+        language: text(&function, "language"),
+        source: function.get("source").cloned().unwrap_or(Value::Null),
+        inline_frames,
+        entry: function
+            .get("entry")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        blocks,
+        edges,
+        calls,
+        diagnostics,
+        caveats,
+        json_path: json_path.display().to_string(),
+        warnings,
+    })
+}
+
 /// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
 pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, String> {
     let program = resolve_elf2tdg().ok_or_else(|| {
@@ -617,25 +804,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         .map(|items| items.iter().take(200).cloned().collect::<Vec<_>>())
         .unwrap_or_default();
 
-    let mut caveats: Vec<String> = Vec::new();
-    if let Some(global) = timing.get("caveats").and_then(Value::as_array) {
-        for caveat in global.iter().filter_map(Value::as_str) {
-            if !caveats.iter().any(|item| item == caveat) {
-                caveats.push(caveat.to_string());
-            }
-        }
-    }
-    if let Some(models) = timing.get("models").and_then(Value::as_array) {
-        for model in models {
-            if let Some(items) = model.get("caveats").and_then(Value::as_array) {
-                for caveat in items.iter().filter_map(Value::as_str) {
-                    if !caveats.iter().any(|item| item == caveat) {
-                        caveats.push(caveat.to_string());
-                    }
-                }
-            }
-        }
-    }
+    let caveats = timing_caveats(&timing);
 
     let function_rows = cfg
         .get("functions")
@@ -735,11 +904,24 @@ mod tests {
     fn with_temp_artifacts<T>(run: impl FnOnce() -> T) -> T {
         // Keep the scratch artifacts inside the workspace build directory: the
         // system temp directory and the pre-existing target tree are not
-        // writable by every restricted agent/CI child process.
+        // writable by every restricted agent/CI child process. Cargo runs these
+        // tests in parallel, so serialize them: PTPN_ARTIFACT_DIR is process
+        // global and one test's cleanup would otherwise delete another test's
+        // artifact tree mid-run.
+        static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        static NEXT_TEST_DIR: std::sync::atomic::AtomicUsize =
+            std::sync::atomic::AtomicUsize::new(0);
+        let _guard = TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let unique = NEXT_TEST_DIR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("build")
-            .join(format!("elf-workflow-test-{}", std::process::id()));
+            .join(format!(
+                "elf-workflow-test-{}-{unique}",
+                std::process::id()
+            ));
         let previous = std::env::var_os("PTPN_ARTIFACT_DIR");
         std::env::set_var("PTPN_ARTIFACT_DIR", &directory);
         let value = run();
@@ -822,6 +1004,42 @@ mod tests {
         assert!(workflow.functions > 0, "CFG must contain functions");
         assert!(!workflow.function_rows.is_empty());
         assert!(!workflow.cfg_text.is_empty());
+    }
+
+    #[test]
+    fn exports_a_single_function_with_instructions() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repository root");
+        let program = root.join("build/cargo/release").join(bin("elf2tdg"));
+        let fixture = root.join(
+            "engines/elf2tdg/examples/rust-concurrency/artifacts/rust-concurrency-analysis.elf",
+        );
+        if !program.is_file() || !fixture.is_file() {
+            eprintln!(
+                "skipping function CFG test: run `just engine-elf2tdg` and check out the elf2tdg engine first"
+            );
+            return;
+        }
+        std::env::set_var("ELF2TDG_BIN", &program);
+        let options = BinaryOptions {
+            cpu: Some("cortex-m4".to_string()),
+            ..Default::default()
+        };
+        let cfg = with_temp_artifacts(|| {
+            function_cfg(&fixture, "start_tasks", &options).expect("function slice must succeed")
+        });
+        assert!(!cfg.name.is_empty());
+        assert!(!cfg.blocks.is_empty());
+        assert!(
+            cfg.blocks.iter().any(|block| block
+                .get("instructions")
+                .and_then(Value::as_array)
+                .map(|items| !items.is_empty())
+                .unwrap_or(false)),
+            "function slice must carry instructions"
+        );
+        assert!(Path::new(&cfg.json_path).is_file() || !cfg.json_path.is_empty());
     }
 
     fn bin(name: &str) -> String {

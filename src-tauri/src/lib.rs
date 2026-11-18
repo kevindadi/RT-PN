@@ -15,7 +15,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
-use crate::binary::ElfWorkflow;
+use crate::binary::{BinaryFunctionCfg, ElfWorkflow};
 use crate::graph::Graph;
 use crate::model::AnalysisResult;
 use crate::workbench::WorkbenchDocs;
@@ -777,6 +777,23 @@ async fn analyze_elf(
     .map_err(|error| format!("ELF worker failed: {error}"))?
 }
 
+#[tauri::command]
+async fn binary_function(
+    path: String,
+    selector: String,
+    options: Option<binary::BinaryOptions>,
+) -> Result<BinaryFunctionCfg, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let elf = PathBuf::from(&path);
+        if !elf.is_file() {
+            return Err(format!("ELF not found: {}", elf.display()));
+        }
+        binary::function_cfg(&elf, &selector, &options.unwrap_or_default())
+    })
+    .await
+    .map_err(|error| format!("ELF function worker failed: {error}"))?
+}
+
 fn webview_data_directory(app: &tauri::AppHandle) -> PathBuf {
     if let Ok(directory) = std::env::var("RT_PN_WEBVIEW_DATA_DIR") {
         return PathBuf::from(directory);
@@ -887,6 +904,7 @@ pub fn run() {
             allocate_cores,
             analyze_model,
             analyze_elf,
+            binary_function,
             binary_profiles,
             cancel_analysis,
             describe_model,

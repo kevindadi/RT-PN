@@ -31,6 +31,7 @@ import {
   allocateCores,
   analyzeElf,
   analyzeModel,
+  binaryFunction,
   binaryProfiles,
   cancelAnalysis,
   describeModel,
@@ -44,6 +45,7 @@ import {
   readTextFile,
   writeTextFile,
 } from "./api";
+import { BinaryCfg } from "./BinaryCfg";
 import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
@@ -67,6 +69,7 @@ import type {
   Workflow,
   WorkbenchDocs,
   BinaryFunctionRow,
+  BinaryFunctionCfg,
   BinaryOptions,
   BinaryProfile,
 } from "./types";
@@ -607,6 +610,10 @@ export default function App() {
   const [sweepProgress, setSweepProgress] = useState({ done: 0, total: 0 });
   const [binaryOptions, setBinaryOptions] = useState<BinaryOptions>({});
   const [profiles, setProfiles] = useState<BinaryProfile[]>([]);
+  const [cfgSelector, setCfgSelector] = useState<string | null>(null);
+  const [functionCfg, setFunctionCfg] = useState<BinaryFunctionCfg | null>(null);
+  const [cfgLoading, setCfgLoading] = useState(false);
+  const [cfgError, setCfgError] = useState<string | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -1037,6 +1044,9 @@ export default function App() {
       });
       setWindowTitle(fileName(path));
       if (newProject) setHistory([]);
+      setFunctionCfg(null);
+      setCfgSelector(null);
+      setCfgError(null);
       try {
         const payload = await analyzeElf(path, binaryOptions);
         setBinary(payload);
@@ -1068,6 +1078,57 @@ export default function App() {
     },
     [appendHistory, binaryOptions],
   );
+
+  const loadFunctionCfg = useCallback(
+    async (selector: string) => {
+      if (!currentPath || !selector) return;
+      setCfgSelector(selector);
+      setCfgLoading(true);
+      setCfgError(null);
+      try {
+        const cfg = await binaryFunction(currentPath, selector, binaryOptions);
+        setFunctionCfg(cfg);
+        setDetail({
+          title: "FUNCTION CFG",
+          body:
+            `${cfg.name || selector}\n` +
+            `${cfg.address || "—"} · ${cfg.blocks.length} blocks · ${cfg.edges.length} edges\n` +
+            `${cfg.source?.file ? `${cfg.source.file}:${cfg.source.line ?? "?"}` : "no source mapping"}`,
+        });
+      } catch (reason) {
+        setFunctionCfg(null);
+        setCfgError(String(reason));
+        setDetail({ title: "CFG EXPLORER", body: String(reason) });
+      } finally {
+        setCfgLoading(false);
+      }
+    },
+    [binaryOptions, currentPath],
+  );
+
+  const functionSelector = (row: BinaryFunctionRow): string =>
+    row.name || row.demangled_name || row.address || row.id || "";
+
+  useEffect(() => {
+    if (!isBinary || activeStage !== "cfg" || !currentPath) return;
+    if (functionCfg && cfgSelector) return;
+    if (cfgLoading) return;
+    const rootName = binary?.roots
+      .map((root) => (typeof root.name === "string" ? root.name : ""))
+      .find((name) => name.length > 0);
+    const fallback = binary?.function_rows.find((row) => (row.name ?? "").length > 0);
+    const selector = rootName || (fallback ? functionSelector(fallback) : "");
+    if (selector) void loadFunctionCfg(selector);
+  }, [
+    activeStage,
+    binary,
+    cfgLoading,
+    cfgSelector,
+    functionCfg,
+    isBinary,
+    currentPath,
+    loadFunctionCfg,
+  ]);
 
   const cancelRun = useCallback(async () => {
     setStatus({ text: "CANCELING", tone: "warn" });
@@ -1565,6 +1626,59 @@ export default function App() {
             </>
           )}
 
+          {isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="ROOTS & CONCURRENCY" />
+              <div className="bin-nav">
+                {(binary?.roots ?? []).slice(0, 12).map((root, index) => {
+                  const name = typeof root.name === "string" ? root.name : "";
+                  if (!name) return null;
+                  return (
+                    <button
+                      key={`root-${index}`}
+                      className="bin-nav-row"
+                      onClick={() => {
+                        setActiveStage("cfg");
+                        setFunctionCfg(null);
+                        void loadFunctionCfg(name);
+                      }}
+                      title={String(root.confidence ?? "")}
+                    >
+                      <span>{name}</span>
+                      <small>{String(root.kind ?? "root")}</small>
+                    </button>
+                  );
+                })}
+                {(binary?.concurrency ?? []).slice(0, 8).map((site, index) => {
+                  const operation = (site.operation ?? {}) as Record<string, unknown>;
+                  const name = String(operation.name ?? operation.api ?? "");
+                  if (!name) return null;
+                  return (
+                    <button
+                      key={`site-${index}`}
+                      className="bin-nav-row spawn"
+                      onClick={() => {
+                        setActiveStage("cfg");
+                        setFunctionCfg(null);
+                        void loadFunctionCfg(name);
+                      }}
+                      title={String(operation.api ?? "")}
+                    >
+                      <span>{name}</span>
+                      <small>{String(operation.kind ?? "spawn")}</small>
+                    </button>
+                  );
+                })}
+                {(binary?.roots.length ?? 0) === 0 && (
+                  <div className="faint">
+                    run the ELF analysis to list execution roots and concurrency sites
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {!isBinary && (
             <>
               <div className="side-summary">
@@ -1979,6 +2093,10 @@ export default function App() {
                   binary={binary}
                   onSelect={(row) => {
                     setActiveStage("cfg");
+                    setFunctionCfg(null);
+                    setCfgSelector(null);
+                    const selector = functionSelector(row);
+                    if (selector) void loadFunctionCfg(selector);
                     setDetail({
                       title: "SELECTED FUNCTION",
                       body:
@@ -1986,6 +2104,19 @@ export default function App() {
                         `${row.address ?? "—"} · ${row.kind ?? "?"} · ${row.size ?? "?"} bytes\n` +
                         `${row.blocks} blocks · ${row.calls} calls · max ${row.cycles_max ?? "?"} cycles`,
                     });
+                  }}
+                />
+              ) : activeStage === "cfg" && isBinary && binary ? (
+                <BinaryCfg
+                  cfg={functionCfg}
+                  loading={cfgLoading}
+                  error={cfgError}
+                  selector={cfgSelector ?? ""}
+                  onReload={() => {
+                    if (cfgSelector) {
+                      setFunctionCfg(null);
+                      void loadFunctionCfg(cfgSelector);
+                    }
                   }}
                 />
               ) : activeStage === "semantics" && !isBinary ? (

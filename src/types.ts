@@ -159,6 +159,59 @@ export interface BinaryOptions {
   freq?: string;
 }
 
+export interface BinaryCfgInstruction {
+  address?: string;
+  size?: number;
+  bytes?: string;
+  mnemonic?: string;
+  operands?: string;
+  text?: string;
+  is_call?: boolean;
+  is_jump?: boolean;
+  is_return?: boolean;
+  is_conditional?: boolean;
+  direct_target?: string | null;
+  source?: { file?: string; line?: number };
+}
+
+export interface BinaryCfgBlock {
+  id: string;
+  address?: string;
+  size?: number;
+  instructions?: BinaryCfgInstruction[];
+  calls?: Array<Record<string, unknown>>;
+  cycles?: { min?: number; max?: number };
+  terminator?: string;
+}
+
+export interface BinaryCfgEdge {
+  from: string;
+  to: string;
+  kind?: string;
+  site?: string;
+  conditional?: boolean;
+}
+
+export interface BinaryFunctionCfg {
+  selector: string;
+  name: string;
+  demangled_name: string;
+  address: string;
+  size: number;
+  kind: string;
+  language: string;
+  source: Record<string, unknown>;
+  inline_frames: Array<Record<string, unknown>>;
+  entry: string | null;
+  blocks: BinaryCfgBlock[];
+  edges: BinaryCfgEdge[];
+  calls: Array<Record<string, unknown>>;
+  diagnostics: Array<Record<string, unknown>>;
+  caveats: string[];
+  json_path: string;
+  warnings: string[];
+}
+
 export interface BinaryProfile {
   name: string;
   path: string;
