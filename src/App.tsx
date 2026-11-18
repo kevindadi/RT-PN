@@ -45,6 +45,8 @@ import {
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
 import { ScgReplay } from "./Replay";
+import { ReplayCompare, type CompareLane } from "./ReplayCompare";
+import { stepsFor } from "./replayModel";
 import { SCHEDULING_POLICIES, SemanticsStage, policyById } from "./Semantics";
 import type {
   AllocationReport,
@@ -588,6 +590,11 @@ export default function App() {
   const [sweep, setSweep] = useState<SweepEntry[]>([]);
   const [sweepBusy, setSweepBusy] = useState(false);
   const [sweepProgress, setSweepProgress] = useState({ done: 0, total: 0 });
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelected, setCompareSelected] = useState<string[]>([]);
+  const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
+  const [compareBusy, setCompareBusy] = useState(false);
+  const [compareProgress, setCompareProgress] = useState({ done: 0, total: 0 });
   const runStartedRef = useRef(0);
   const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -729,6 +736,8 @@ export default function App() {
       setAllocation(null);
       setDescribeText("");
       setSweep([]);
+      setCompareMode(false);
+      setCompareLanes([]);
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
@@ -836,6 +845,83 @@ export default function App() {
       setDescribeBusy(false);
     }
   }, [currentPath, policy, tie]);
+
+  const toggleComparePolicy = (id: string) => {
+    setCompareSelected((previous) =>
+      previous.includes(id) ? previous.filter((entry) => entry !== id) : [...previous, id],
+    );
+  };
+
+  const openPolicyCompare = () => {
+    setCompareSelected(
+      Array.from(new Set([policy, "fixed_prior_with_resume", "pcp", "pip"])),
+    );
+    setCompareMode(true);
+  };
+
+  const runPolicyComparison = useCallback(async () => {
+    if (!currentPath || isBinary || compareBusy) return;
+    const policies = compareSelected.length > 0 ? compareSelected : [policy];
+    const maxStates = Math.min(budget.maxStates, 5_000);
+    const timeoutSecs = Math.min(budget.timeoutSecs || 20, 20);
+    setCompareBusy(true);
+    setCompareLanes([]);
+    setError(null);
+    const lanes: CompareLane[] = [];
+    for (const [position, id] of policies.entries()) {
+      setCompareProgress({ done: position, total: policies.length });
+      const info = policyById(id);
+      let lane: CompareLane = {
+        policy: id,
+        label: info.label,
+        status: "ERROR",
+        mode: "",
+        error: "",
+        steps: [],
+      };
+      try {
+        const payload = await analyzeModel(currentPath, {
+          max_states: maxStates,
+          timeout_secs: timeoutSecs,
+          max_memory_mb: budget.maxMemoryMb,
+          policy: id,
+          tie,
+        });
+        const steps = stepsFor(payload.result.scg, payload.deadlock_trace);
+        const deadlock = Boolean(payload.deadlock_trace?.length);
+        const status = !payload.result.ok
+          ? "ERROR"
+          : deadlock
+            ? "DEADLOCK"
+            : payload.result.partial || payload.result.timed_out
+              ? "PARTIAL"
+              : "PATH";
+        lane = {
+          ...lane,
+          status,
+          mode: deadlock ? "deadlock counterexample" : "shortest path",
+          steps,
+          error: payload.result.ok ? "" : payload.result.error,
+        };
+      } catch (reason) {
+        lane = { ...lane, error: String(reason) };
+      }
+      lanes.push(lane);
+      setCompareLanes([...lanes]);
+    }
+    setCompareProgress({ done: policies.length, total: policies.length });
+    setCompareBusy(false);
+  }, [
+    compareBusy,
+    compareSelected,
+    currentPath,
+    isBinary,
+    budget.maxMemoryMb,
+    budget.maxStates,
+    budget.timeoutSecs,
+    tie,
+    policy,
+  ]);
 
   const sweepMaxStates = Math.min(budget.maxStates, 8_000);
   const sweepTimeoutSecs = Math.min(budget.timeoutSecs || 30, 30);
@@ -1679,13 +1765,29 @@ export default function App() {
                   onRunSweep={() => void runSweep()}
                 />
               ) : activeStage === "replay" && !isBinary && analysis ? (
-                <ScgReplay
-                  scg={analysis.result.scg}
-                  trace={analysis.deadlock_trace}
-                  modelLabel={displayName}
-                  policy={policyInfo.label}
-                  tie={tie}
-                />
+                compareMode ? (
+                  <ReplayCompare
+                    lanes={compareLanes}
+                    busy={compareBusy}
+                    progress={compareProgress}
+                    selected={compareSelected}
+                    onToggle={toggleComparePolicy}
+                    onRun={() => void runPolicyComparison()}
+                    onClose={() => setCompareMode(false)}
+                    maxStates={Math.min(budget.maxStates, 5_000)}
+                    timeoutSecs={Math.min(budget.timeoutSecs || 20, 20)}
+                    tie={tie}
+                  />
+                ) : (
+                  <ScgReplay
+                    scg={analysis.result.scg}
+                    trace={analysis.deadlock_trace}
+                    modelLabel={displayName}
+                    policy={policyInfo.label}
+                    tie={tie}
+                    onCompare={openPolicyCompare}
+                  />
+                )
               ) : doc ? (
                 <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
               ) : (

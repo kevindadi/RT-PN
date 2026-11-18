@@ -120,12 +120,14 @@ export function ScgReplay({
   modelLabel,
   policy,
   tie,
+  onCompare,
 }: {
   scg: StateGraph;
   trace: TraceStep[] | null;
   modelLabel?: string;
   policy?: string;
   tie?: string;
+  onCompare?: () => void;
 }) {
   const hasTrace = Boolean(trace && trace.length > 0);
   const [target, setTarget] = useState(Math.max(scg.nodes.length - 1, 0));
@@ -256,6 +258,11 @@ export function ScgReplay({
           >
             EXPORT JSON
           </button>
+          {onCompare && (
+            <button className="btn small accent" onClick={onCompare}>
+              COMPARE POLICIES
+            </button>
+          )}
           {exportNote && <span className="replay-note">{exportNote}</span>}
         </div>
       </header>

@@ -165,6 +165,14 @@ autoplaying, no external assets) and `EXPORT JSON` writes the raw step data;
 both carry the model name and the scheduling policy/tie used, so a replay can
 be attached to a paper, review bundle or presentation.
 
+`COMPARE POLICIES` opens the policy-aware side-by-side view: pick any subset of
+the scheduling policies, run them on the same model (bounded to 5 000 states /
+20 s per policy) and replay the lanes with one synchronized playhead. Each lane
+shows its own deadlock counterexample or shortest path with marking tokens, the
+fired transition, elapsed time and the selected active set `E_pri`, which makes
+the difference between schedulers (e.g. lock inheritance under PCP/PIP) directly
+visible.
+
 The EDF/FIFO/LLF notes reflect the engine's documented constraints (statically
 partitioned multi-core, no locks, deterministic segments for event-driven LLF).
 

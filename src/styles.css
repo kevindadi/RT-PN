@@ -1872,6 +1872,256 @@ button {
   }
 }
 
+/* ---------- policy-aware side-by-side replay ---------- */
+
+.cmp {
+  height: 100%;
+  overflow: auto;
+  padding: 26px 30px 40px;
+  background:
+    radial-gradient(1000px 480px at 15% -10%, rgba(79, 163, 255, 0.08), transparent 60%),
+    radial-gradient(900px 420px at 95% 0%, rgba(150, 120, 255, 0.06), transparent 55%);
+}
+
+.cmp-hero {
+  max-width: 1240px;
+  margin: 0 auto 14px;
+  animation: sem-rise 420ms ease-out both;
+}
+
+.cmp-setup {
+  max-width: 1240px;
+  margin: 0 auto 14px;
+  padding: 14px 16px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(13, 26, 44, 0.95), rgba(9, 18, 32, 0.95));
+}
+
+.cmp-setup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.cmp-setup h3 {
+  margin: 4px 0 0;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: #dcecff;
+}
+
+.cmp-policies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cmp-chip {
+  padding: 4px 9px;
+  border: 1px solid #1d3350;
+  border-radius: 999px;
+  background: #0a1526;
+  color: #7c8ca8;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.cmp-chip:hover {
+  border-color: #4fa3ff;
+  color: #cfe6ff;
+}
+
+.cmp-chip.on {
+  border-color: #4fa3ff;
+  background: rgba(79, 163, 255, 0.16);
+  color: #eaf5ff;
+}
+
+.cmp-controls {
+  max-width: 1240px;
+  margin: 0 auto 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #17304d;
+  border-radius: 8px;
+  background: rgba(8, 17, 31, 0.92);
+}
+
+.cmp-lanes {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.cmp-lane {
+  padding: 14px 16px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(13, 26, 44, 0.95), rgba(9, 18, 32, 0.95));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+  animation: sem-rise 320ms ease-out both;
+  min-width: 0;
+}
+
+.cmp-lane-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.cmp-lane-title {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  color: #cfe6ff;
+}
+
+.cmp-status {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid #244a73;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.6px;
+  color: #b9d3ec;
+  white-space: nowrap;
+}
+
+.cmp-status.cmp-ok {
+  border-color: #1f6f4a;
+  color: #67e8a2;
+  background: rgba(31, 111, 74, 0.18);
+}
+
+.cmp-status.cmp-warn {
+  border-color: #6f5a1f;
+  color: #f2c14e;
+  background: rgba(111, 90, 31, 0.18);
+}
+
+.cmp-status.cmp-bad {
+  border-color: #6f1f2c;
+  color: #ff7b7b;
+  background: rgba(111, 31, 44, 0.18);
+}
+
+.cmp-lane-meta {
+  margin-bottom: 10px;
+  font-size: 9.5px;
+  color: #7c8ca8;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  word-break: break-word;
+}
+
+.cmp-section {
+  margin-bottom: 10px;
+}
+
+.cmp-marking {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+.cmp-place {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid #244a73;
+  border-radius: 5px;
+  background: #0b1728;
+}
+
+.cmp-place.added {
+  border-color: #4fa3ff;
+  box-shadow: 0 0 10px rgba(79, 163, 255, 0.3);
+}
+
+.cmp-place-name {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 8.5px;
+  color: #9fc0de;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmp-tokens {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.cmp-tokens i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #d8efff, #4fa3ff 60%, #1f6feb);
+  box-shadow: 0 0 6px rgba(79, 163, 255, 0.7);
+}
+
+.cmp-count {
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 8px;
+  color: #566f8a;
+}
+
+.cmp-fired {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: #d9ecff;
+  word-break: break-word;
+}
+
+.cmp-step-meta {
+  margin-top: 3px;
+  font-size: 9px;
+  color: #7c8ca8;
+}
+
+.cmp-e_pri {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cmp-e_pri-chip {
+  padding: 3px 7px;
+  border: 1px solid #244a73;
+  border-radius: 4px;
+  background: rgba(79, 163, 255, 0.06);
+  color: #b9d3ec;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 8.5px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+@media (max-width: 1280px) {
+  .cmp-lanes {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+}
+
 
 
 
