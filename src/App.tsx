@@ -32,6 +32,7 @@ import {
   analyzeElf,
   analyzeModel,
   cancelAnalysis,
+  describeModel,
   engineHealth,
   fillTimings,
   pendingTimings,
@@ -43,6 +44,7 @@ import {
 } from "./api";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
+import { SCHEDULING_POLICIES, SemanticsStage, policyById } from "./Semantics";
 import type {
   AllocationReport,
   AnalysisPayload,
@@ -73,6 +75,12 @@ const STAGES: Record<
     title: "PTPN STRUCTURE",
     subtitle: "Places, transitions and arcs as dense text",
     previewable: true,
+  },
+  semantics: {
+    label: "SEMANTICS",
+    title: "SCHEDULING SEMANTICS",
+    subtitle: "Formal state, firing rule and animation for the selected policy",
+    previewable: false,
   },
   state: {
     label: "STATE SPACE",
@@ -211,7 +219,12 @@ function deadlockTraceText(trace: TraceStep[]): string {
   return lines.join("\n");
 }
 
-function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string {
+function buildMarkdownReport(
+  payload: AnalysisPayload,
+  budgets: Budget,
+  policy: string,
+  tie: string,
+): string {
   const result = payload.result;
   const metrics = result.metrics ?? {};
   const lines = [
@@ -224,6 +237,7 @@ function buildMarkdownReport(payload: AnalysisPayload, budgets: Budget): string 
     `- Exit code: ${result.exit_code ?? "—"}`,
     `- Elapsed: ${result.elapsed_ms} ms`,
     `- Budget: max-states ${budgets.maxStates}, timeout ${budgets.timeoutSecs || "off"} s, max-memory ${budgets.maxMemoryMb || "off"} MB`,
+    `- Scheduling policy: ${policy} · tie ${tie}`,
     "",
     "## Assumptions",
     "",
@@ -437,7 +451,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
     ? ["elf", "cfg"]
-    : ["dag", "ptpn", "state", "timeline", "report"];
+    : ["dag", "ptpn", "semantics", "state", "timeline", "report"];
 }
 
 function stageDoc(stage: Stage, docs: WorkbenchDocs | undefined): string {
@@ -545,6 +559,10 @@ export default function App() {
   const [fillBusy, setFillBusy] = useState(false);
   const [allocation, setAllocation] = useState<AllocationReport | null>(null);
   const [allocateBusy, setAllocateBusy] = useState(false);
+  const [policy, setPolicy] = useState("fixed_prior_with_resume");
+  const [tie, setTie] = useState("fifo");
+  const [describeText, setDescribeText] = useState("");
+  const [describeBusy, setDescribeBusy] = useState(false);
   const runStartedRef = useRef(0);
   const snapshotIdRef = useRef(1);
   const [error, setError] = useState<string | null>(null);
@@ -570,6 +588,7 @@ export default function App() {
   const deadlockSteps = analysis?.deadlock_trace ?? null;
   const deadlockCount = metrics.deadlock_states?.length ?? 0;
   const taskMetrics = metrics.tasks ?? [];
+  const policyInfo = policyById(policy);
 
   const openDeadlockPreview = () => {
     if (!analysis?.deadlock_graph) return;
@@ -683,12 +702,15 @@ export default function App() {
       setPending([]);
       setPendingInputs({});
       setAllocation(null);
+      setDescribeText("");
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
           max_states: budget.maxStates,
           timeout_secs: budget.timeoutSecs,
           max_memory_mb: budget.maxMemoryMb,
+          policy,
+          tie,
         });
         setAnalysis(payload);
         setBusy(false);
@@ -723,7 +745,7 @@ export default function App() {
                 ? "good"
                 : "bad",
         });
-        const budgetLine = `budget   max-states ${budget.maxStates} · timeout ${budget.timeoutSecs || "off"} s · max-memory ${budget.maxMemoryMb || "off"} MB`;
+        const budgetLine = `budget   max-states ${budget.maxStates} · timeout ${budget.timeoutSecs || "off"} s · max-memory ${budget.maxMemoryMb || "off"} MB\npolicy   ${policyInfo.label} (${policy}) · tie ${tie}`;
         const partialLine = result.partial
           ? `\npartial  resource budget reached (exit 5): the state-class graph is an incomplete prefix and metrics stay bounds`
           : "";
@@ -737,6 +759,9 @@ export default function App() {
           verdict,
           `${payload.docs.task_count}T · ${result.scg.nodes.length}S${result.partial ? " · partial" : ""}`,
         );
+        void describeModel(path, policy, tie)
+          .then((description) => setDescribeText(description))
+          .catch(() => setDescribeText(""));
       } catch (reason) {
         setBusy(false);
         setStatus({ text: "ANALYSIS FAILED", tone: "bad" });
@@ -744,7 +769,7 @@ export default function App() {
         setDetail({ title: "ANALYSIS FAILED", body: String(reason) });
       }
     },
-    [appendHistory, budget],
+    [appendHistory, budget, policyInfo, policy, tie],
   );
 
   const exportReport = useCallback(
@@ -752,8 +777,12 @@ export default function App() {
       if (!analysis) return;
       const contents =
         format === "md"
-          ? buildMarkdownReport(analysis, budget)
-          : JSON.stringify({ budgets: budget, result: analysis.result, docs: analysis.docs }, null, 2);
+          ? buildMarkdownReport(analysis, budget, policy, tie)
+          : JSON.stringify(
+              { budgets: budget, policy, tie, result: analysis.result, docs: analysis.docs },
+              null,
+              2,
+            );
       const stem = fileName(analysis.result.path).replace(/\.[^.]+$/, "");
       try {
         const target = await save({
@@ -767,8 +796,20 @@ export default function App() {
         setError(String(reason));
       }
     },
-    [analysis, budget],
+    [analysis, budget, policy, tie],
   );
+
+  const refreshDescription = useCallback(async () => {
+    if (!currentPath) return;
+    setDescribeBusy(true);
+    try {
+      setDescribeText(await describeModel(currentPath, policy, tie));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setDescribeBusy(false);
+    }
+  }, [currentPath, policy, tie]);
 
   const runBinary = useCallback(
     async (path: string, newProject: boolean) => {
@@ -989,7 +1030,8 @@ export default function App() {
 
   const copyStage = async () => {
     try {
-      await navigator.clipboard.writeText(doc);
+      const text = activeStage === "semantics" ? describeText || doc : doc;
+      await navigator.clipboard.writeText(text);
       setStatus({ text: "COPIED", tone: "accent" });
     } catch {
       setError("Clipboard unavailable");
@@ -1151,6 +1193,48 @@ export default function App() {
             </button>
             <button className="btn wide" onClick={() => void openProject()}>
               <FolderOpen size={13} /> OPEN PROJECT
+            </button>
+          </div>
+
+          <div className="divider" />
+          <Section title="SCHEDULING POLICY" />
+          <select
+            className="policy-select"
+            value={policy}
+            disabled={busy}
+            onChange={(event) => {
+              setPolicy(event.target.value);
+              setDescribeText("");
+            }}
+          >
+            {SCHEDULING_POLICIES.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="policy-select"
+            value={tie}
+            disabled={busy}
+            onChange={(event) => {
+              setTie(event.target.value);
+              setDescribeText("");
+            }}
+          >
+            <option value="fifo">tie · fifo</option>
+            <option value="arbitrary">tie · arbitrary</option>
+          </select>
+          <div className="faint">
+            {policyInfo.family} · {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
+          </div>
+          <div className="stack">
+            <button
+              className="btn wide"
+              disabled={!currentPath || describeBusy}
+              onClick={() => void refreshDescription()}
+            >
+              <Terminal size={13} /> DESCRIBE MODEL
             </button>
           </div>
 
@@ -1482,7 +1566,14 @@ export default function App() {
                 </div>
               </div>
               <div className="stage-rule" />
-              {doc ? (
+              {activeStage === "semantics" && !isBinary ? (
+                <SemanticsStage
+                  policy={policyInfo}
+                  describeText={describeText}
+                  describeBusy={describeBusy}
+                  onRefreshDescription={() => void refreshDescription()}
+                />
+              ) : doc ? (
                 <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
               ) : (
                 <div className="empty-stage">
@@ -1598,7 +1689,7 @@ export default function App() {
         </span>
         <span className="status-right">
           {analysis?.result.ok
-            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s${deadlockCount > 0 ? ` · ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
+            ? `${analysis.result.scg.nodes.length} state classes · ${analysis.result.elapsed_ms} ms · ${policyInfo.id} · budget ${budget.maxStates} states / ${budget.timeoutSecs || "∞"} s${deadlockCount > 0 ? ` · ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
             : isBinary
               ? "elf2tdg artifacts · analysis backend pending"
               : "text-first workbench"}

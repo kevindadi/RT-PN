@@ -167,6 +167,26 @@ try {
   }
   log(`pending timing fill: ${pending[0].task} -> ${patched.split("\n").length} patched lines`);
 
+  // ---- 6. ptpn describe (scheduling policy semantics) ------------------
+  const describeEnvelope = JSON.parse(
+    capture(
+      ptpn,
+      [
+        "describe",
+        "-f", path.join(paths.ptpnEngine, "example", "introduction", "locked.rtsl"),
+        "--policy", "fixed_prior_with_restart",
+        "--tie", "arbitrary",
+        "--diagnostics", "json",
+      ],
+      { cwd: paths.ptpnEngine },
+    ),
+  );
+  const description = describeEnvelope.result?.description ?? "";
+  if (describeEnvelope.ok !== true || description.length === 0) {
+    throw new Error("ptpn describe returned no scheduling description");
+  }
+  log(`describe: ${description.split("\n").length} lines for fixed_prior_with_restart`);
+
   console.log("\nE2E smoke test passed: elf2tdg + ptpn sidecars are runnable.");
 } catch (error) {
   console.error(`\nerror: ${error.message}`);

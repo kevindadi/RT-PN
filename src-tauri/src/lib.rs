@@ -330,13 +330,30 @@ struct AnalysisOptions {
     max_states: Option<u64>,
     timeout_secs: Option<u64>,
     max_memory_mb: Option<u64>,
+    policy: Option<String>,
+    tie: Option<String>,
 }
+
+/// Values accepted by `ptpn --policy` (docs/ptpn/usage.md, "Scheduling policies").
+const SCHEDULING_POLICIES: [&str; 11] = [
+    "fixed",
+    "fixed_prior_with_resume",
+    "fixed_prior_with_restart",
+    "rm",
+    "dm",
+    "pip",
+    "pcp",
+    "srp",
+    "edf",
+    "fifo",
+    "llf",
+];
 
 impl AnalysisOptions {
     /// Clamp the UI values into the range the analyzer accepts. The defaults keep
     /// state-class exploration bounded: Petri-net reachability graphs can grow
     /// exponentially, so a run must never be unbounded by accident.
-    fn budgets(self) -> cli::RunOptions {
+    fn resolved(self) -> Result<cli::RunOptions, String> {
         let max_states = self.max_states.unwrap_or(20_000).clamp(100, 1_000_000);
         let timeout_secs = match self.timeout_secs.unwrap_or(120) {
             0 => 0,
@@ -346,11 +363,21 @@ impl AnalysisOptions {
             0 => 0,
             value => value.clamp(64, 65_536),
         };
-        cli::RunOptions {
+        let policy = self.policy.unwrap_or_default();
+        if !policy.is_empty() && !SCHEDULING_POLICIES.contains(&policy.as_str()) {
+            return Err(format!("unknown scheduling policy `{policy}`"));
+        }
+        let tie = self.tie.unwrap_or_default();
+        if !tie.is_empty() && tie != "fifo" && tie != "arbitrary" {
+            return Err(format!("unknown tie mode `{tie}` (expected fifo or arbitrary)"));
+        }
+        Ok(cli::RunOptions {
             max_states,
             timeout_secs,
             max_memory_mb,
-        }
+            policy,
+            tie,
+        })
     }
 }
 
@@ -514,6 +541,58 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|error| format!("cannot read {path}: {error}"))
 }
 
+/// `ptpn describe`: the analyzer's own restatement of the effective scheduling
+/// semantics (computed priorities, cores, lock nesting, release bindings).
+#[tauri::command]
+fn describe_model(path: String, policy: Option<String>, tie: Option<String>) -> Result<String, String> {
+    let cli = cli::resolve_cli()
+        .ok_or_else(|| "ptpn CLI not found; build it with `just engines`.".to_string())?;
+    let input = PathBuf::from(&path);
+    let mut arguments: Vec<std::ffi::OsString> = vec![
+        "describe".into(),
+        "-f".into(),
+        input.as_os_str().to_os_string(),
+        "--diagnostics".into(),
+        "json".into(),
+    ];
+    if let Some(policy) = policy.filter(|value| !value.is_empty()) {
+        arguments.push("--policy".into());
+        arguments.push(policy.into());
+    }
+    if let Some(tie) = tie.filter(|value| !value.is_empty()) {
+        arguments.push("--tie".into());
+        arguments.push(tie.into());
+    }
+    let borrowed: Vec<&std::ffi::OsStr> = arguments.iter().map(std::ffi::OsString::as_os_str).collect();
+    let working_directory = input.parent().map(std::path::Path::to_path_buf);
+    let output = run_tool_output(&cli, &borrowed, working_directory.as_deref())?;
+    let envelope = json_from_stdout(&output)
+        .ok_or_else(|| "ptpn describe did not produce a JSON envelope".to_string())?;
+    if envelope.get("ok").and_then(|value| value.as_bool()) != Some(true) {
+        let diagnostics = envelope
+            .get("diagnostics")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.get("message").and_then(|value| value.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default();
+        return Err(if diagnostics.is_empty() {
+            "ptpn describe failed".to_string()
+        } else {
+            diagnostics
+        });
+    }
+    Ok(envelope
+        .pointer("/result/description")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_string())
+}
+
 #[derive(Serialize)]
 struct AnalysisPayload {
     result: AnalysisResult,
@@ -557,7 +636,10 @@ async fn analyze_model(
     app: tauri::AppHandle,
     state: State<'_, RunState>,
 ) -> Result<AnalysisPayload, String> {
-    let budgets = options.unwrap_or_default().budgets();
+    let budgets = match options.unwrap_or_default().resolved() {
+        Ok(budgets) => budgets,
+        Err(error) => return Err(error),
+    };
     state.cancel.store(false, Ordering::Relaxed);
     let cancel = Arc::clone(&state.cancel);
     tauri::async_runtime::spawn_blocking(move || {
@@ -722,6 +804,7 @@ pub fn run() {
             analyze_model,
             analyze_elf,
             cancel_analysis,
+            describe_model,
             engine_health,
             fill_timings,
             pending_timings,

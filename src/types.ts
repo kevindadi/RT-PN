@@ -146,6 +146,8 @@ export interface AnalysisOptions {
   max_states?: number;
   timeout_secs?: number;
   max_memory_mb?: number;
+  policy?: string;
+  tie?: string;
 }
 
 export interface RunRecord {
@@ -159,6 +161,7 @@ export type Workflow = "none" | "spec" | "binary";
 export type Stage =
   | "dag"
   | "ptpn"
+  | "semantics"
   | "state"
   | "timeline"
   | "report"

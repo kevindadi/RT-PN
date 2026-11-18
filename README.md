@@ -125,6 +125,31 @@ ANALYZE` feeds the entered `[min, max]` pairs to `ptpn fill`. The patched source
 is written to the artifact directory and analyzed immediately, leaving the
 original model untouched.
 
+### Scheduling policies and formal semantics
+
+The sidebar `SCHEDULING POLICY` selector overrides the model's policy for the
+next analysis (`--policy`) and picks the equal-priority tie mode (`--tie fifo |
+arbitrary`). The supported policies are `fixed`, `fixed_prior_with_resume`,
+`fixed_prior_with_restart`, `rm`, `dm`, `pip`, `pcp`, `srp`, `edf`, `fifo` and
+`llf`; the selected id is carried through the run details, status bar, exported
+reports and `.rtpn` runs.
+
+The new `SEMANTICS` stage documents the selected policy formally:
+
+- the state-class definition `S = (M, Z, E_struct, E_pri, Susp)` and the
+  policy-specific clock set / extra state components (release clocks for
+  EDF/FIFO, laxity clocks for LLF, lock ownership or system ceiling for
+  PIP/PCP/SRP);
+- the time-elapse, priority-filter (`E_pri`) and firing rules, plus the
+  preemption/lock and restriction notes;
+- a live animated firing-rule diagram (elapse → enabling → filter → fire →
+  canonicalize) rendered with the policy's selection rule;
+- `ptpn describe` output for the loaded model (`DESCRIBE MODEL`), i.e. the
+  analyser's own restatement of effective priorities, cores and lock nesting.
+
+The EDF/FIFO/LLF notes reflect the engine's documented constraints (statically
+partitioned multi-core, no locks, deterministic segments for event-driven LLF).
+
 ### Charts, core allocation and project files
 
 - `WCRT / SLACK` draws a compact per-task bar chart (deadline marker, red on a

@@ -88,6 +88,15 @@ export function readTextFile(path: string): Promise<string> {
   return invoke<string>("read_text_file", { path });
 }
 
+/** `ptpn describe`: the analyzer's restatement of the effective semantics. */
+export function describeModel(
+  path: string,
+  policy?: string,
+  tie?: string,
+): Promise<string> {
+  return invoke<string>("describe_model", { path, policy: policy ?? null, tie: tie ?? null });
+}
+
 export async function pickProject(): Promise<string | null> {
   const selected = await open({
     multiple: false,

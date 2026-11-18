@@ -9,11 +9,15 @@ use crate::model::AnalysisResult;
 
 /// Resource budget for one analyzer run. State-class exploration can blow up
 /// on adversarial models, so both limits are always passed to the engine.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct RunOptions {
     pub max_states: u64,
     pub timeout_secs: u64,
     pub max_memory_mb: u64,
+    /// Empty means "keep the model's policy".
+    pub policy: String,
+    /// `fifo` or `arbitrary`; empty keeps the engine default.
+    pub tie: String,
 }
 
 fn subcommand_for(path: &Path) -> &'static str {
@@ -159,6 +163,12 @@ pub fn run_analysis(
     }
     if options.max_memory_mb > 0 {
         command.arg("--max-memory").arg(options.max_memory_mb.to_string());
+    }
+    if !options.policy.is_empty() {
+        command.arg("--policy").arg(&options.policy);
+    }
+    if !options.tie.is_empty() {
+        command.arg("--tie").arg(&options.tie);
     }
     if subcommand == "rtsl" {
         command.arg("--export-tdg").arg(&tdg_path);
