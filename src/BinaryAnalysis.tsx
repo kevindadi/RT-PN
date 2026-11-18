@@ -51,6 +51,8 @@ export function BinaryAnalysisView({
   onRun,
   onProfileSaved,
   onOpenPath,
+  showSetup,
+  onOpenConfig,
 }: {
   binary: ElfWorkflow;
   boardProfile: string;
@@ -63,6 +65,8 @@ export function BinaryAnalysisView({
   onRun: () => void;
   onProfileSaved: (path: string) => void;
   onOpenPath: (selector: string, path: string[]) => void;
+  showSetup: boolean;
+  onOpenConfig: () => void;
 }) {
   const analysis = binary.analysis;
   const model = record(analysis?.model) ?? {};
@@ -228,7 +232,8 @@ export function BinaryAnalysisView({
 
   return (
     <div className="bin-analysis">
-      <section className="analysis-setup">
+      {showSetup ? (
+        <section className="analysis-setup">
         <div className="analysis-setup-head">
           <div>
             <div className="sem-eyebrow">ANALYSIS SETUP | RUN CONFIGURATION</div>
@@ -355,6 +360,28 @@ export function BinaryAnalysisView({
           )}
         </div>
       </section>
+      ) : (
+        <section className="analysis-setup">
+          <div className="analysis-setup-head">
+            <div>
+              <div className="sem-eyebrow">CONFIGURATION</div>
+              <h3>
+                {str(model.id) || "no timing model"} | {profileId} |{" "}
+                {frequency !== null
+                  ? `${(frequency / 1_000_000).toFixed(1)} MHz`
+                  : "no frequency"}
+              </h3>
+              <div className="faint">
+                Timing model, board profile and frequency are edited in the configuration
+                dialog. The results below belong to the displayed run.
+              </div>
+            </div>
+            <button className="btn accent" onClick={onOpenConfig}>
+              OPEN CONFIGURATION
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="analysis-toolbar">
         <div>

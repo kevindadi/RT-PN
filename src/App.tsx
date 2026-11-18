@@ -51,6 +51,7 @@ import {
   writeTextFile,
 } from "./api";
 import { BinaryAnalysisView } from "./BinaryAnalysis";
+import { AnalysisConfigDialog } from "./AnalysisConfigDialog";
 import { BinaryCfg } from "./BinaryCfg";
 import { BinaryCompare } from "./BinaryCompare";
 import { BinaryOverview } from "./BinaryStages";
@@ -630,6 +631,7 @@ export default function App() {
     footer: string;
   } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
   const [cli, setCli] = useState<EngineHealth | null>(null);
   const [elf2tdg, setElf2tdg] = useState<EngineHealth | null>(null);
   const [budget, setBudget] = useState<Budget>({
@@ -1741,7 +1743,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.4.4 | English-only UI | Two independent workspaces.
+          RT-PN 0.5.0 | config dialog | Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1773,6 +1775,16 @@ export default function App() {
         </div>
           <div className="topbar-actions">
           <StatusPill status={status} />
+          {isBinary && (
+            <button
+              className="btn"
+              disabled={!binary}
+              onClick={() => setConfigOpen(true)}
+              title="Edit CPU, board profile and frequency"
+            >
+              CONFIG
+            </button>
+          )}
           <button
             className="btn primary"
             disabled={!currentPath || busy}
@@ -1926,7 +1938,7 @@ export default function App() {
             </>
           )}
 
-          {isBinary && (
+          {false && isBinary && (
             <>
               <div className="divider" />
               <Section title="SAVED RUN CONFIGURATIONS" />
@@ -2589,6 +2601,8 @@ export default function App() {
                     onProfileSaved={(path) =>
                       setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
                     }
+                    showSetup={false}
+                    onOpenConfig={() => setConfigOpen(true)}
                     onOpenPath={(selector, path) => {
                       setWcetPath(path);
                       setFunctionCfg(null);
@@ -2767,6 +2781,29 @@ export default function App() {
         />
       )}
 
+      {configOpen && isBinary && binary && (
+        <AnalysisConfigDialog
+          binary={binary}
+          options={binaryOptions}
+          profiles={profiles}
+          busy={busy}
+          canRun={Boolean(currentPath)}
+          onOptionsChange={setBinaryOptions}
+          onReloadProfiles={() => {
+            void binaryProfiles()
+              .then(setProfiles)
+              .catch((reason) => setError(String(reason)));
+          }}
+          onRun={() => {
+            if (currentPath) void runBinary(currentPath, false);
+          }}
+          onProfileSaved={(path) =>
+            setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
+          }
+          onClose={() => setConfigOpen(false)}
+        />
+      )}
+
       {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
 
       {error && (
@@ -2885,6 +2922,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

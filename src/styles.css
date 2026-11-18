@@ -3857,6 +3857,14 @@ body,
   padding: 20px 22px 24px;
 }
 
+.config-dialog {
+  width: min(1120px, 100%);
+}
+
+.config-dialog .timing-editor {
+  margin-top: 8px;
+}
+
 .guide-head {
   display: flex;
   align-items: flex-start;
