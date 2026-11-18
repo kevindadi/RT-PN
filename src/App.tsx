@@ -1388,6 +1388,52 @@ export default function App() {
     }
   }, []);
 
+  const compareProjectRuns = useCallback(async (project: WorkspaceProject) => {
+    const runs = project.last_runs ?? [];
+    if (runs.length < 2 || !runs[0].run_id || !runs[1].run_id) return;
+    try {
+      const [a, b] = await Promise.all([
+        workspaceOpenRun(project.id, runs[0].run_id),
+        workspaceOpenRun(project.id, runs[1].run_id),
+      ]);
+      const roots = (payload: ElfWorkflow) =>
+        new Map(
+          (Array.isArray(payload.analysis?.wcet?.roots)
+            ? (payload.analysis.wcet!.roots as Array<Record<string, unknown>>)
+            : []
+          ).map((root) => [
+            String(root.name ?? root.function ?? "root"),
+            typeof root.cycles === "number" ? root.cycles : null,
+          ]),
+        );
+      const rootA = roots(a.payload);
+      const rootB = roots(b.payload);
+      const names = Array.from(new Set([...rootA.keys(), ...rootB.keys()])).sort();
+      const lines = [
+        `A  ${new Date(runs[0].at * 1000).toLocaleString()} · ${runs[0].profile || "no profile"}`,
+        `B  ${new Date(runs[1].at * 1000).toLocaleString()} · ${runs[1].profile || "no profile"}`,
+        "",
+        `functions  ${a.payload.functions} → ${b.payload.functions}`,
+        `instructions  ${a.payload.coverage?.total_instructions ?? "?"} → ${b.payload.coverage?.total_instructions ?? "?"}`,
+        "",
+        "WCET roots (A → B, Δ B−A):",
+      ];
+      for (const name of names) {
+        const cyclesA = rootA.get(name) ?? null;
+        const cyclesB = rootB.get(name) ?? null;
+        const delta =
+          cyclesA !== null && cyclesB !== null ? cyclesB - cyclesA : null;
+        lines.push(
+          `  ${name}: ${cyclesA ?? "—"} → ${cyclesB ?? "—"}` +
+            (delta === null ? "" : ` (${delta > 0 ? "+" : ""}${delta.toFixed(1)} cy)`),
+        );
+      }
+      setDetail({ title: "STORED RUN COMPARISON", body: lines.join("\n") });
+    } catch (reason) {
+      setError(String(reason));
+    }
+  }, []);
+
   const openWorkspaceProject = useCallback(async (id: string) => {
     try {
       const restored = await workspaceOpenProject(id);
@@ -1634,6 +1680,17 @@ export default function App() {
                     </span>
                   </button>
                   <button
+                    className="project-compare"
+                    title="compare the latest two stored runs"
+                    disabled={(project.last_runs?.length ?? 0) < 2}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void compareProjectRuns(project);
+                    }}
+                  >
+                    Δ
+                  </button>
+                  <button
                     className="project-delete"
                     title="remove this cached project (your ELF is kept)"
                     onClick={async (event) => {
@@ -1684,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.4 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.3.5 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2810,6 +2867,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

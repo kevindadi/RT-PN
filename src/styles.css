@@ -2936,8 +2936,7 @@ textarea {
 .project-delete {
   position: absolute;
   top: 5px;
-  right: 5px;
-  width: 20px;
+  right: 5px;  width: 20px;
   height: 20px;
   border: 1px solid #1d3350;
   border-radius: 4px;
@@ -2950,6 +2949,30 @@ textarea {
 
 .project-delete:hover {
   border-color: #ff7b7b;
+}
+
+.project-compare {
+  position: absolute;
+  top: 5px;
+  right: 29px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  background: rgba(8, 17, 31, 0.92);
+  color: #9fd0ff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-compare:hover:not(:disabled) {
+  border-color: #4fa3ff;
+}
+
+.project-compare:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .project-runs {
