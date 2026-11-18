@@ -1741,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.5 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.4.0 · binary analysis delivery · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2867,6 +2867,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
