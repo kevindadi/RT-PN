@@ -563,16 +563,50 @@ fn analysis_args(options: &BinaryOptions) -> Vec<String> {
     args
 }
 
-fn elf_view_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<String> {
-    let mut args = vec![
+fn elf_view_args(input: &Path, output: &Path, _options: &BinaryOptions) -> Vec<String> {
+    // The ELF loader view does not accept timing/board-profile flags; passing them
+    // makes the first import fail with "--board-profile is only supported for CFG
+    // analysis". CPU/profile options apply to the CFG exports only.
+    vec![
         "--view".to_string(),
         "elf".to_string(),
         "--output".to_string(),
         output.display().to_string(),
-    ];
-    args.extend(analysis_args(options));
-    args.push(input.display().to_string());
-    args
+        input.display().to_string(),
+    ]
+}
+
+fn profile_cpu(profile: &str) -> Option<String> {
+    let text = fs::read_to_string(profile).ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix("cpu") else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = rest.trim().trim_matches('"');
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
+}
+
+fn effective_options(options: &BinaryOptions) -> BinaryOptions {
+    let mut next = options.clone();
+    let cpu_missing = next.cpu.as_deref().map(str::is_empty).unwrap_or(true);
+    if cpu_missing {
+        if let Some(profile) = next
+            .board_profile
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            next.cpu = profile_cpu(profile);
+        }
+    }
+    next
 }
 
 fn cfg_json_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<String> {
@@ -671,6 +705,7 @@ pub fn function_cfg(
     selector: &str,
     options: &BinaryOptions,
 ) -> Result<BinaryFunctionCfg, String> {
+    let options = effective_options(options);
     let program = resolve_elf2tdg().ok_or_else(|| {
         "elf2tdg CLI not found. Set ELF2TDG_BIN, or build it with `just engines`.".to_string()
     })?;
@@ -695,7 +730,7 @@ pub fn function_cfg(
         "--output".to_string(),
         json_path.display().to_string(),
     ];
-    args.extend(analysis_args(options));
+    args.extend(analysis_args(&options));
     args.push(elf.display().to_string());
     let mut warnings = Vec::new();
     run_tool(&program, &args)?;
@@ -781,7 +816,7 @@ pub fn function_cfg(
         "--output".to_string(),
         mermaid_path.display().to_string(),
     ];
-    mermaid_args.extend(analysis_args(options));
+    mermaid_args.extend(analysis_args(&options));
     mermaid_args.push(elf.display().to_string());
     let cfg_mermaid = match run_tool(&program, &mermaid_args)
         .and_then(|()| fs::read_to_string(&mermaid_path).map_err(|error| error.to_string()))
@@ -820,6 +855,7 @@ pub fn function_cfg(
 
 /// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
 pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, String> {
+    let options = effective_options(options);
     let program = resolve_elf2tdg().ok_or_else(|| {
         "elf2tdg CLI not found. Set ELF2TDG_BIN, or build it with `just engines`.".to_string()
     })?;
@@ -833,11 +869,11 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
     let warnings = Vec::new();
 
     // 1. Loader view: readable ELF layout (Mermaid source file).
-    run_tool(&program, &elf_view_args(elf, &elf_mmd, options))?;
+    run_tool(&program, &elf_view_args(elf, &elf_mmd, &options))?;
 
     // 2. CFG: one JSON export carries everything the workspace needs (DOT/SVG
     // rendering is deferred: it made the initial load noticeably slower).
-    run_tool(&program, &cfg_json_args(elf, &cfg_json, options))?;
+    run_tool(&program, &cfg_json_args(elf, &cfg_json, &options))?;
 
     let layout = fs::read_to_string(&elf_mmd)
         .map_err(|error| format!("cannot read {}: {error}", elf_mmd.display()))?;
@@ -1079,6 +1115,11 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair[0] == "--freq" && pair[1] == "168MHz"));
+        // The ELF loader view must not receive timing/board flags.
+        let loader = elf_view_args(input, Path::new("art/fw.elf.mmd"), &options);
+        for flag in ["--cpu", "--board-profile", "--freq"] {
+            assert!(!loader.iter().any(|arg| arg == flag), "loader got {flag}");
+        }
     }
 
     #[test]
@@ -1097,9 +1138,13 @@ mod tests {
             return;
         }
         std::env::set_var("ELF2TDG_BIN", &program);
+        let profile = root.join("examples/elf2tdg/profiles/cortex-m4-pipeline.toml");
         let workflow = with_temp_artifacts(|| {
-            let workflow =
-                analyze(&fixture, &BinaryOptions::default()).expect("ELF workflow must succeed");
+            let options = BinaryOptions {
+                board_profile: Some(profile.display().to_string()),
+                ..Default::default()
+            };
+            let workflow = analyze(&fixture, &options).expect("ELF workflow with profile must succeed");
             // The scratch directory is removed after the closure returns, so
             // check the on-disk artifacts here.
             assert!(workflow.artifacts_dir.is_dir());
@@ -1117,6 +1162,16 @@ mod tests {
         assert!(workflow.functions > 0, "CFG must contain functions");
         assert!(!workflow.function_rows.is_empty());
         assert!(!workflow.cfg_text.is_empty());
+        assert!(
+            workflow
+                .analysis
+                .profile
+                .get("board_profile_id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("cortex-m4-pipeline"),
+            "profile metadata must reach the analysis payload"
+        );
     }
 
     #[test]

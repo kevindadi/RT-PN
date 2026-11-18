@@ -593,6 +593,25 @@ fn example_base() -> Result<String, String> {
 struct BinaryProfile {
     name: String,
     path: String,
+    cpu: Option<String>,
+    arch: Option<String>,
+}
+
+fn profile_field(text: &str, key: &str) -> Option<String> {
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(rest) = line.strip_prefix(key) else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = rest.trim().trim_matches('"');
+        if !value.is_empty() {
+            return Some(value.to_string());
+        }
+    }
+    None
 }
 
 /// Board timing profiles shipped with the binary workflow example tree.
@@ -616,6 +635,12 @@ fn binary_profiles() -> Result<Vec<BinaryProfile>, String> {
             profiles.push(BinaryProfile {
                 name,
                 path: path.display().to_string(),
+                cpu: std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|text| profile_field(&text, "cpu")),
+                arch: std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|text| profile_field(&text, "arch")),
             });
         }
     }

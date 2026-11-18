@@ -1,6 +1,6 @@
 [package]
 name = "rt-pn"
-version = "0.4.1"
+version = "0.4.2"
 description = "RT-PN native workbench"
 authors = ["kevindadi"]
 edition = "2021"
@@ -21,6 +21,7 @@ serde_json = "1"
 regex = "1"
 chrono = "0.4"
 rusqlite = { version = "0.32", features = ["bundled"] }
+
 
 
 

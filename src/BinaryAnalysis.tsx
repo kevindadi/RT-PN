@@ -80,6 +80,19 @@ export function BinaryAnalysisView({
   const profileId = str(extras?.board_profile_id) || "no board profile";
   const profileSha = str(extras?.board_profile_sha256);
   const profileSource = str(extras?.board_profile_source);
+
+  const selectedProfile = profiles.find(
+    (profile) => profile.path === options.board_profile,
+  );
+  const runCpu = str(model.id);
+  const runProfileSource = str(profileSource);
+  const selectedProfileFile = (options.board_profile ?? "").split(/[\\/]/).pop() ?? "";
+  const configDirty =
+    (Boolean(options.cpu) && options.cpu !== runCpu) ||
+    (Boolean(options.board_profile) &&
+      (runProfileSource === "" ||
+        !runProfileSource.endsWith(selectedProfileFile))) ||
+    (!options.board_profile && runProfileSource !== "");
   const frequency = num(wcet?.frequency_hz);
 
   const [exportNote, setExportNote] = useState("");
@@ -246,17 +259,21 @@ export function BinaryAnalysisView({
             <select
               value={options.board_profile ?? ""}
               disabled={busy}
-              onChange={(event) =>
+              onChange={(event) => {
+                const path = event.target.value;
+                const chosen = profiles.find((profile) => profile.path === path);
                 onOptionsChange({
                   ...options,
-                  board_profile: event.target.value || undefined,
-                })
-              }
+                  board_profile: path || undefined,
+                  cpu: chosen?.cpu ?? options.cpu,
+                });
+              }}
             >
               <option value="">none (built-in CPU table only)</option>
               {profiles.map((profile) => (
                 <option key={profile.path} value={profile.path}>
                   {profile.name}
+                  {profile.cpu ? ` · ${profile.cpu}` : ""}
                 </option>
               ))}
             </select>
@@ -273,6 +290,26 @@ export function BinaryAnalysisView({
             />
           </label>
         </div>
+        {configDirty && (
+          <div className="faint" style={{ color: "#f2c14e" }}>
+            Configuration changed since this run — press RUN ANALYSIS to rebuild. The
+            results and caveats below still describe the previous run.
+          </div>
+        )}
+        {selectedProfile?.cpu && options.cpu && selectedProfile.cpu !== options.cpu && (
+          <div className="faint" style={{ color: "#ff9b9b" }}>
+            This profile pins CPU <code>{selectedProfile.cpu}</code>, but the selected CPU
+            is <code>{options.cpu}</code>; RUN ANALYSIS would fail.{" "}
+            <button
+              className="btn small"
+              onClick={() =>
+                onOptionsChange({ ...options, cpu: selectedProfile.cpu })
+              }
+            >
+              SET CPU TO {selectedProfile.cpu}
+            </button>
+          </div>
+        )}
         <div className="faint">
           Without a board profile only the CPU's built-in instruction table is applied,
           so CACHES / DATA MEMORY / BRANCHES / WCET stay empty — that is expected, not a

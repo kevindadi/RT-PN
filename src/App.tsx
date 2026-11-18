@@ -1741,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.4.1 · binary analysis setup · Two independent workspaces.
+          RT-PN 0.4.2 · analysis setup fixed · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2880,6 +2880,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

@@ -236,6 +236,8 @@ export interface WorkspaceProject {
 export interface BinaryProfile {
   name: string;
   path: string;
+  cpu?: string;
+  arch?: string;
 }
 
 export interface BinaryAnalysis {
