@@ -47,6 +47,7 @@ import {
 } from "./api";
 import { BinaryAnalysisView } from "./BinaryAnalysis";
 import { BinaryCfg } from "./BinaryCfg";
+import { BinaryCompare } from "./BinaryCompare";
 import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
@@ -2188,26 +2189,35 @@ export default function App() {
                   }}
                 />
               ) : activeStage === "analysis" && isBinary && binary ? (
-                <BinaryAnalysisView
-                  binary={binary}
-                  boardProfile={binaryOptions.board_profile ?? ""}
-                  onProfileSaved={(path) =>
-                    setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
-                  }
-                  onOpenPath={(selector, path) => {
-                    setWcetPath(path);
-                    setFunctionCfg(null);
-                    setCfgSelector(null);
-                    setActiveStage("cfg");
-                    void loadFunctionCfg(selector);
-                    setDetail({
-                      title: "WCET LONGEST PATH",
-                      body:
-                        `${selector}\n${path.length} blocks highlighted in the CFG\n` +
-                        "Static CFG longest-path estimate — not a hardware proof.",
-                    });
-                  }}
-                />
+                <div className="bin-analysis-stack">
+                  <BinaryAnalysisView
+                    binary={binary}
+                    boardProfile={binaryOptions.board_profile ?? ""}
+                    onProfileSaved={(path) =>
+                      setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
+                    }
+                    onOpenPath={(selector, path) => {
+                      setWcetPath(path);
+                      setFunctionCfg(null);
+                      setCfgSelector(null);
+                      setActiveStage("cfg");
+                      void loadFunctionCfg(selector);
+                      setDetail({
+                        title: "WCET LONGEST PATH",
+                        body:
+                          `${selector}\n${path.length} blocks highlighted in the CFG\n` +
+                          "Static CFG longest-path estimate — not a hardware proof.",
+                      });
+                    }}
+                  />
+                  <BinaryCompare
+                    elfPath={binary.elf_path}
+                    profiles={profiles}
+                    cpu={binaryOptions.cpu ?? ""}
+                    freq={binaryOptions.freq ?? ""}
+                    defaultProfile={binaryOptions.board_profile ?? ""}
+                  />
+                </div>
               ) : activeStage === "semantics" && !isBinary ? (
                 <SemanticsStage
                   policy={policyInfo}

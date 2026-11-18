@@ -3284,6 +3284,76 @@ textarea {
   font-size: 9.5px;
 }
 
+/* ---------- board-profile A/B comparison ---------- */
+
+.bin-analysis-stack {
+  height: 100%;
+  overflow: auto;
+}
+
+.bin-analysis-stack .bin-analysis {
+  height: auto;
+  overflow: visible;
+}
+
+.bin-compare {
+  margin: 0 24px 30px;
+  padding: 16px 18px 18px;
+  border: 1px solid #17304d;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(16, 26, 48, 0.96), rgba(9, 18, 32, 0.96));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
+}
+
+.bin-compare-pickers {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin: 6px 0 12px;
+}
+
+.bin-compare-pickers label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 220px;
+}
+
+.bin-compare-pickers span {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  color: #6f8299;
+}
+
+.bin-compare-pickers select {
+  padding: 5px 8px;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  background: #0b1422;
+  color: #dce8f5;
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.bin-compare-pickers select:focus {
+  outline: 1px solid #8f7bff;
+  border-color: #8f7bff;
+}
+
+.bin-compare-table {
+  margin-top: 12px;
+}
+
+.bin-delta-bad {
+  color: #ff7b7b !important;
+}
+
+.bin-delta-good {
+  color: #67e8a2 !important;
+}
+
 /* ---------- compact analysis sidebar ---------- */
 
 .side-summary {
