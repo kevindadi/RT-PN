@@ -3303,6 +3303,68 @@ textarea {
   margin-bottom: 12px;
 }
 
+/* ---------- in-document analysis setup ---------- */
+
+.analysis-setup {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border: 1px solid #4a3f8f;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(30, 26, 56, 0.95), rgba(9, 18, 32, 0.95));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.24);
+}
+
+.analysis-setup-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.analysis-setup-head h3 {
+  margin: 4px 0;
+  font-size: 15px;
+  color: #e8e2ff;
+}
+
+.analysis-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.analysis-setup-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.analysis-setup-grid span {
+  font-family: var(--font-mono) !important;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: #8f7bff;
+}
+
+.analysis-setup-grid select,
+.analysis-setup-grid input {
+  padding: 6px 8px;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  background: #0b1422;
+  color: #dce8f5;
+  font-family: var(--font-mono) !important;
+  font-size: 10.5px;
+}
+
+.analysis-setup-grid select:focus,
+.analysis-setup-grid input:focus {
+  outline: 1px solid #8f7bff;
+  border-color: #8f7bff;
+}
+
 .analysis-title {
   margin: 4px 0;
   font-family: var(--font-display);

@@ -3,7 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 
 import { writeTextFile } from "./api";
 import { InstructionTiming } from "./InstructionTiming";
-import type { ElfWorkflow } from "./types";
+import type { BinaryOptions, BinaryProfile, ElfWorkflow } from "./types";
 
 const record = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -42,11 +42,25 @@ function CaveatList({ items }: { items: string[] }) {
 export function BinaryAnalysisView({
   binary,
   boardProfile,
+  options,
+  profiles,
+  busy,
+  canRun,
+  onOptionsChange,
+  onReloadProfiles,
+  onRun,
   onProfileSaved,
   onOpenPath,
 }: {
   binary: ElfWorkflow;
   boardProfile: string;
+  options: BinaryOptions;
+  profiles: BinaryProfile[];
+  busy: boolean;
+  canRun: boolean;
+  onOptionsChange: (next: BinaryOptions) => void;
+  onReloadProfiles: () => void;
+  onRun: () => void;
   onProfileSaved: (path: string) => void;
   onOpenPath: (selector: string, path: string[]) => void;
 }) {
@@ -191,6 +205,90 @@ export function BinaryAnalysisView({
 
   return (
     <div className="bin-analysis">
+      <section className="analysis-setup">
+        <div className="analysis-setup-head">
+          <div>
+            <div className="sem-eyebrow">ANALYSIS SETUP · RUN CONFIGURATION</div>
+            <h3>Choose how the static timing model is built</h3>
+            <div className="faint">
+              CPU model supplies the built-in instruction costs. A board profile adds
+              caches, branch prediction, data-memory timing and WCET bounds, and pins the
+              CPU model. Frequency converts cycles to nanoseconds. Press RUN ANALYSIS to
+              rebuild the cached results.
+            </div>
+          </div>
+          <button className="btn accent" disabled={!canRun || busy} onClick={onRun}>
+            {busy ? "ANALYZING…" : "RUN ANALYSIS"}
+          </button>
+        </div>
+        <div className="analysis-setup-grid">
+          <label>
+            <span>1 · CPU TIMING MODEL</span>
+            <select
+              value={options.cpu ?? ""}
+              disabled={busy}
+              onChange={(event) =>
+                onOptionsChange({ ...options, cpu: event.target.value || undefined })
+              }
+            >
+              <option value="">auto-detect</option>
+              {["cortex-m4", "cortex-m7", "cortex-m33", "riscv32", "aarch64", "x86-64"].map(
+                (cpu) => (
+                  <option key={cpu} value={cpu}>
+                    {cpu}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+          <label>
+            <span>2 · BOARD PROFILE</span>
+            <select
+              value={options.board_profile ?? ""}
+              disabled={busy}
+              onChange={(event) =>
+                onOptionsChange({
+                  ...options,
+                  board_profile: event.target.value || undefined,
+                })
+              }
+            >
+              <option value="">none (built-in CPU table only)</option>
+              {profiles.map((profile) => (
+                <option key={profile.path} value={profile.path}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>3 · FREQUENCY</span>
+            <input
+              value={options.freq ?? ""}
+              disabled={busy}
+              placeholder="e.g. 168MHz"
+              onChange={(event) =>
+                onOptionsChange({ ...options, freq: event.target.value || undefined })
+              }
+            />
+          </label>
+        </div>
+        <div className="faint">
+          Without a board profile only the CPU's built-in instruction table is applied,
+          so CACHES / DATA MEMORY / BRANCHES / WCET stay empty — that is expected, not a
+          failure. With <code>cortex-m4-pipeline</code> you get pipeline cycle costs;
+          cache/WCET profiles must match the selected CPU (e.g. <code>cortex-m7-wcet</code>{" "}
+          needs CPU <code>cortex-m7</code>).{" "}
+          {profiles.length === 0 && (
+            <>
+              <button className="btn small" onClick={onReloadProfiles}>
+                RELOAD PROFILES
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
       <div className="analysis-toolbar">
         <div>
           <div className="sem-eyebrow">STATIC ANALYSIS · BOARD PROFILE</div>
@@ -260,10 +358,12 @@ export function BinaryAnalysisView({
 
       {!wcet && !icache && !dcache && !memory && !branch && (
         <div className="bin-caveats">
-          <div className="sem-eyebrow">NO ANALYSIS PROFILE ENABLED</div>
+          <div className="sem-eyebrow">NO ANALYSIS DATA IN THIS RUN</div>
           <div className="faint" style={{ marginTop: 6 }}>
-            Pick an icache / dcache / branch / data-memory / WCET board profile in the
-            sidebar and run with the profile to populate these cards.
+            This run used no timing model or board profile, so the result cards are empty.
+            Set a CPU (and optionally a board profile) in the ANALYSIS SETUP panel above,
+            then press RUN ANALYSIS. Use the bundled ELF EXAMPLE if you want a ready-made
+            configuration.
           </div>
         </div>
       )}

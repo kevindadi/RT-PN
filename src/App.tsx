@@ -1741,7 +1741,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.4.0 · binary analysis delivery · Two independent workspaces.
+          RT-PN 0.4.1 · binary analysis setup · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2568,6 +2568,19 @@ export default function App() {
                   <BinaryAnalysisView
                     binary={binary}
                     boardProfile={binaryOptions.board_profile ?? ""}
+                    options={binaryOptions}
+                    profiles={profiles}
+                    busy={busy}
+                    canRun={Boolean(currentPath)}
+                    onOptionsChange={setBinaryOptions}
+                    onReloadProfiles={() => {
+                      void binaryProfiles()
+                        .then(setProfiles)
+                        .catch((reason) => setError(String(reason)));
+                    }}
+                    onRun={() => {
+                      if (currentPath) void runBinary(currentPath, false);
+                    }}
                     onProfileSaved={(path) =>
                       setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
                     }
@@ -2867,6 +2880,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
