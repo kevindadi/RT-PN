@@ -45,6 +45,7 @@ import {
   readTextFile,
   writeTextFile,
 } from "./api";
+import { BinaryAnalysisView } from "./BinaryAnalysis";
 import { BinaryCfg } from "./BinaryCfg";
 import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
 import { CodeStage } from "./CodeStage";
@@ -141,8 +142,14 @@ const STAGES: Record<
   cfg: {
     label: "CFG",
     title: "CONTROL-FLOW GRAPH",
-    subtitle: "Readable CFG from elf2tdg · preview image via Graphviz",
+    subtitle: "Interactive function CFG with instruction inspector",
     previewable: true,
+  },
+  analysis: {
+    label: "ANALYSIS",
+    title: "STATIC ANALYSIS",
+    subtitle: "Board-profile cache, branch, memory and WCET results",
+    previewable: false,
   },
 };
 
@@ -496,7 +503,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
 
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
-    ? ["overview", "elf", "functions", "cfg"]
+    ? ["overview", "elf", "functions", "cfg", "analysis"]
     : ["dag", "ptpn", "semantics", "state", "replay", "timeline", "report"];
 }
 
@@ -563,6 +570,14 @@ function isBinaryPath(path: string): boolean {
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function valueString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function analysisModelId(binary: ElfWorkflow): string {
+  return valueString(binary.analysis.model.id) || "no timing model";
 }
 
 function timestamp(): string {
@@ -635,7 +650,9 @@ export default function App() {
       ? `${binary.schema || "cfg"} · ${binary.functions} fns · ${binary.roots.length} roots`
       : activeStage === "functions"
         ? `${binary.function_rows.length} functions · click a row to open the CFG`
-        : activeStage === "elf"
+        : activeStage === "analysis"
+          ? `${analysisModelId(binary)} · ${binary.analysis.caveats.length} caveats`
+          : activeStage === "elf"
           ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
           : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
     : "";
@@ -2118,6 +2135,14 @@ export default function App() {
                       void loadFunctionCfg(cfgSelector);
                     }
                   }}
+                />
+              ) : activeStage === "analysis" && isBinary && binary ? (
+                <BinaryAnalysisView
+                  binary={binary}
+                  boardProfile={binaryOptions.board_profile ?? ""}
+                  onProfileSaved={(path) =>
+                    setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
+                  }
                 />
               ) : activeStage === "semantics" && !isBinary ? (
                 <SemanticsStage

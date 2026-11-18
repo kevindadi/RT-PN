@@ -35,6 +35,19 @@ pub struct BinaryOptions {
     pub freq: Option<String>,
 }
 
+/// Static-analysis summaries produced by the active board profile.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct BinaryAnalysis {
+    pub model: Value,
+    pub profile: Value,
+    pub wcet: Option<Value>,
+    pub cache: Option<Value>,
+    pub data_cache: Option<Value>,
+    pub data_memory: Option<Value>,
+    pub branch_prediction: Option<Value>,
+    pub caveats: Vec<String>,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ElfWorkflow {
     pub elf_path: PathBuf,
@@ -59,6 +72,7 @@ pub struct ElfWorkflow {
     pub function_rows: Vec<Value>,
     pub cfg_diagnostics: Vec<Value>,
     pub caveats: Vec<String>,
+    pub analysis: BinaryAnalysis,
 }
 
 fn rule() -> String {
@@ -871,6 +885,52 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         cfg_svg.display().to_string(),
     ];
 
+    let model = timing
+        .get("models")
+        .and_then(Value::as_array)
+        .and_then(|models| models.first())
+        .cloned()
+        .unwrap_or(Value::Null);
+    let profile = model
+        .get("params")
+        .and_then(|params| params.get("extras"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let wcet = cfg.get("wcet").cloned();
+    let cache = cfg.get("cache").cloned();
+    let data_cache = cfg.get("data_cache").cloned();
+    let data_memory = cfg.get("data_memory").cloned();
+    let branch_prediction = cfg.get("branch_prediction").cloned();
+    let mut analysis_caveats = caveats.clone();
+    for value in [
+        &wcet,
+        &cache,
+        &data_cache,
+        &data_memory,
+        &branch_prediction,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(items) = value.get("caveats").and_then(Value::as_array) {
+            for caveat in items.iter().filter_map(Value::as_str) {
+                if !analysis_caveats.iter().any(|item| item == caveat) {
+                    analysis_caveats.push(caveat.to_string());
+                }
+            }
+        }
+    }
+    let analysis = BinaryAnalysis {
+        model,
+        profile,
+        wcet,
+        cache,
+        data_cache,
+        data_memory,
+        branch_prediction,
+        caveats: analysis_caveats,
+    };
+
     Ok(ElfWorkflow {
         elf_path: elf.to_path_buf(),
         file_size: fs::metadata(elf).map(|metadata| metadata.len()).unwrap_or(0),
@@ -894,6 +954,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         function_rows,
         cfg_diagnostics,
         caveats,
+        analysis,
     })
 }
 

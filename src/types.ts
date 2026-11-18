@@ -217,6 +217,17 @@ export interface BinaryProfile {
   path: string;
 }
 
+export interface BinaryAnalysis {
+  model: Record<string, unknown>;
+  profile: Record<string, unknown>;
+  wcet: Record<string, unknown> | null;
+  cache: Record<string, unknown> | null;
+  data_cache: Record<string, unknown> | null;
+  data_memory: Record<string, unknown> | null;
+  branch_prediction: Record<string, unknown> | null;
+  caveats: string[];
+}
+
 export interface ElfWorkflow {
   elf_path: string;
   file_size: number;
@@ -240,6 +251,7 @@ export interface ElfWorkflow {
   function_rows: BinaryFunctionRow[];
   cfg_diagnostics: Array<Record<string, unknown>>;
   caveats: string[];
+  analysis: BinaryAnalysis;
 }
 
 export interface EngineInfo {
@@ -280,4 +292,5 @@ export type Stage =
   | "overview"
   | "elf"
   | "functions"
-  | "cfg";
+  | "cfg"
+  | "analysis";
