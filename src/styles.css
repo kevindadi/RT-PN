@@ -1118,7 +1118,8 @@ button {
 .semantics-title,
 .sem-describe h3 {
   margin: 4px 0 6px;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    sans-serif;
   font-weight: 600;
   letter-spacing: 0.2px;
 }
@@ -1165,12 +1166,109 @@ button {
   color: #d9ecff;
 }
 
-.semantics-grid {
-  max-width: 960px;
-  margin: 0 auto 18px;
+.mmd {
+  width: 100%;
+  overflow: auto;
+}
+
+.mmd-canvas {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 12px;
+}
+
+.mmd-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mmd-loading {
+  padding: 22px 0;
+  text-align: center;
+  color: #7c8ca8;
+  font-size: 11px;
+}
+
+.mmd-fallback {
+  margin: 0;
+  padding: 12px 0;
+  color: #9fc0de;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+/* ---------- Mermaid semantics diagrams ---------- */
+
+.sem-diagram {
+  max-width: 1000px;
+  margin: 0 auto 16px;
+  padding: 16px 18px 8px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background:
+    radial-gradient(700px 240px at 50% 0%, rgba(79, 163, 255, 0.06), transparent 70%),
+    linear-gradient(180deg, rgba(13, 26, 44, 0.95), rgba(9, 18, 32, 0.95));
+  animation: sem-rise 460ms ease-out both;
+}
+
+.sem-diagram-head {
+  margin-bottom: 4px;
+}
+
+.sem-diagram h3 {
+  margin: 4px 0 0;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: #dcecff;
+}
+
+.sem-notes {
+  max-width: 1000px;
+  margin: 0 auto 16px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
+}
+
+.sem-note {
+  padding: 14px 16px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(13, 26, 44, 0.95), rgba(9, 18, 32, 0.95));
+  animation: sem-rise 500ms ease-out both;
+}
+
+.sem-note h3 {
+  margin: 0 0 8px;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 9.5px;
+  letter-spacing: 1.3px;
+  color: #7fb2e8;
+}
+
+.sem-note p,
+.sem-note li {
+  color: #a9bfd6;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.sem-note ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.sem-note-mono {
+  margin-top: 8px;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace !important;
+  font-size: 10px !important;
+  color: #8fb6d9 !important;
+  word-break: break-word;
 }
 
 .sem-card {
@@ -1540,7 +1638,8 @@ button {
 
 .sem-sweep h3 {
   margin: 4px 0 6px;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    sans-serif;
   font-weight: 600;
   font-size: 16px;
   color: #dcecff;
@@ -1908,7 +2007,8 @@ button {
 
 .cmp-setup h3 {
   margin: 4px 0 0;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    sans-serif;
   font-weight: 600;
   font-size: 16px;
   color: #dcecff;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { Mermaid } from "./Mermaid";
 import type { SweepEntry } from "./types";
 
 export interface SchedulingPolicy {
@@ -191,6 +192,40 @@ export function policyById(id: string): SchedulingPolicy {
   return SCHEDULING_POLICIES.find((policy) => policy.id === id) ?? SCHEDULING_POLICIES[1];
 }
 
+const diagramLabel = (value: string): string =>
+  value.replace(/"/g, "'").replace(/\s+/g, " ").trim();
+
+function stateChart(policy: SchedulingPolicy): string {
+  const extra = policy.extraState
+    .map((item, index) => `  X${index}["${diagramLabel(item)}"]\n  S -.-> X${index}`)
+    .join("\n");
+  return `flowchart TB
+  S["state class<br/><b>S = (M, Z, E_struct, E_pri, Susp)</b>"]
+  S --> M["<b>M</b> · marking<br/>place tokens"]
+  S --> Z["<b>Z</b> · DBM clock zone<br/>canonical difference bounds"]
+  S --> ES["<b>E_struct</b> · structurally enabled"]
+  S --> EP["<b>E_pri</b> · selected active set<br/>${diagramLabel(policy.orderRule)}"]
+  S --> SUS["<b>Susp</b> · suspended transitions<br/>frozen execution clocks"]
+  Z --> CLK["clocks<br/>${diagramLabel(policy.clocks)}"]
+${extra}
+  classDef core fill:#12314f,stroke:#4fa3ff,stroke-width:2px,color:#e6f1ff
+  classDef part fill:#0f2138,stroke:#2b537d,color:#cfe6ff
+  class S core
+  class M,Z,ES,EP,SUS,CLK part`;
+}
+
+function firingChart(policy: SchedulingPolicy): string {
+  return `flowchart LR
+  A["state class S"] -->|"time elapse δ ≥ 0"| B["S′ = S ↑ δ"]
+  B -->|"structural enabling"| C{"E_struct"}
+  C -->|"priority filter"| D["<b>E_pri</b><br/>${diagramLabel(policy.orderRule)}"]
+  D -->|"fire t ∈ E_pri"| E["M′ = M − •t + t•"]
+  E -->|"canonicalize Z"| F["state class S″"]
+  F -->|"branch on each admissible E_pri / tie order"| A
+  classDef hot fill:#12314f,stroke:#4fa3ff,stroke-width:2px,color:#e6f1ff
+  class D hot`;
+}
+
 const PHASES = [
   "time elapse",
   "structural enabling (E_struct)",
@@ -308,60 +343,37 @@ export function SemanticsStage({
         </p>
       </header>
 
-      <div className="semantics-grid">
-        <article className="sem-card">
-          <h3>STATE</h3>
-          <div className="sem-formula math">S = (M, Z, E_struct, E_pri, Susp)</div>
-          <p>
-            <span className="math">M</span> is the marking, <span className="math">Z</span> the
-            canonical DBM clock zone; <span className="math">E_pri ⊆ E_struct</span> is the
-            selected active set and <span className="math">Susp</span> the suspended
-            transitions.
-          </p>
-          <ul>
-            {policy.extraState.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-            <li>branching on each admissible selected active set (and tie ordering)</li>
-          </ul>
-        </article>
+      <section className="sem-diagram">
+        <div className="sem-diagram-head">
+          <div className="sem-eyebrow">FORMAL STATE · MERMAID</div>
+          <h3>State-class definition</h3>
+        </div>
+        <Mermaid chart={stateChart(policy)} />
+      </section>
 
-        <article className="sem-card">
-          <h3>TIME ELAPSE</h3>
-          <div className="sem-formula math">delay δ ≥ 0; Z′ = Z ↑ δ; M unchanged</div>
-          <p>
-            Time may advance while no enabled transition becomes disabled. Frozen execution
-            clocks of suspended transitions do not advance; their suspension clocks do.
-          </p>
-        </article>
+      <section className="sem-diagram">
+        <div className="sem-diagram-head">
+          <div className="sem-eyebrow">FIRING SEMANTICS · MERMAID</div>
+          <h3>Time elapse → structural enabling → priority filter → fire → canonicalize</h3>
+        </div>
+        <Mermaid chart={firingChart(policy)} />
+      </section>
 
-        <article className="sem-card">
-          <h3>PRIORITY FILTER</h3>
-          <div className="sem-formula math">
-            E_pri = filter_{policy.id}(E_struct, M, Z)
-          </div>
-          <p>{policy.orderRule}</p>
+      <div className="sem-notes">
+        <article className="sem-note">
+          <h3>PREEMPTION &amp; LOCKS</h3>
+          <p>{policy.locks}</p>
+          <p className="sem-note-mono">{policy.clocks}</p>
         </article>
-
-        <article className="sem-card">
-          <h3>FIRE</h3>
-          <div className="sem-formula math">
-            t ∈ E_pri; M′ = M − •t + t•; clocks of t reset
-          </div>
+        <article className="sem-note">
+          <h3>FIRING NOTES</h3>
           <ul>
             {policy.firing.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
         </article>
-
-        <article className="sem-card wide">
-          <h3>PREEMPTION, LOCKS AND CLOCKS</h3>
-          <p>{policy.locks}</p>
-          <p className="sem-mono">{policy.clocks}</p>
-        </article>
-
-        <article className="sem-card wide">
+        <article className="sem-note">
           <h3>RESTRICTIONS</h3>
           <p>{policy.restrictions}</p>
         </article>
