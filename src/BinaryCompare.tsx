@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 
-import { analyzeElf } from "./api";
+import { analyzeElf, writeTextFile } from "./api";
 import type { BinaryProfile, ElfWorkflow } from "./types";
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
@@ -139,6 +140,7 @@ export function BinaryCompare({
   const [error, setError] = useState("");
   const [summaryA, setSummaryA] = useState<ProfileSummary | null>(null);
   const [summaryB, setSummaryB] = useState<ProfileSummary | null>(null);
+  const [exportNote, setExportNote] = useState("");
 
   useEffect(() => {
     if (!profileA) {
@@ -215,6 +217,111 @@ export function BinaryCompare({
     ],
   ];
 
+  const wcetRows = () => {
+    if (!summaryA || !summaryB) return [];
+    const keys = Object.keys({
+      ...(summaryA.wcet?.roots ?? {}),
+      ...(summaryB.wcet?.roots ?? {}),
+    }).sort();
+    return keys.map((root) => {
+      const a = summaryA.wcet?.roots[root];
+      const b = summaryB.wcet?.roots[root];
+      const delta =
+        a?.cycles !== undefined &&
+        a?.cycles !== null &&
+        b?.cycles !== undefined &&
+        b?.cycles !== null
+          ? b.cycles - a.cycles
+          : null;
+      return { root, a, b, delta };
+    });
+  };
+
+  const exportComparison = async (format: "md" | "json") => {
+    if (!summaryA || !summaryB) return;
+    setExportNote("");
+    try {
+      const base = (elfPath.split(/[\\/]/).pop() ?? "binary").replace(/\.[^.]+$/, "");
+      const target = await save({
+        defaultPath: `${base}.profile-compare.${format}`,
+        filters: [
+          {
+            name: format === "md" ? "Comparison report" : "Comparison JSON",
+            extensions: [format],
+          },
+        ],
+      });
+      if (!target) return;
+      const rows = wcetRows();
+      let contents: string;
+      if (format === "md") {
+        const lines = [
+          `# Binary profile comparison — ${base}`,
+          "",
+          `- ELF: ${elfPath}`,
+          `- CPU: ${cpu || "auto"} · frequency: ${freq || "profile default"}`,
+          `- profile A: ${profileName(profiles, profileA)} (${profileA})`,
+          `- profile B: ${profileName(profiles, profileB)} (${profileB})`,
+          "",
+          "## Metrics",
+          "",
+          "| metric | A | B |",
+          "| --- | --- | --- |",
+          ...counterRows.map(
+            ([label, value]) => `| ${label} | ${value(summaryA)} | ${value(summaryB)} |`,
+          ),
+          "",
+          "## WCET roots",
+          "",
+          "| root | A status | A cycles | B status | B cycles | Δ cycles (B−A) |",
+          "| --- | --- | ---: | --- | ---: | ---: |",
+          ...rows.map(
+            (row) =>
+              `| ${row.root} | ${row.a?.status ?? "—"} | ${show(row.a?.cycles ?? null)} | ${row.b?.status ?? "—"} | ${show(row.b?.cycles ?? null)} | ${row.delta === null ? "—" : `${row.delta > 0 ? "+" : ""}${row.delta.toFixed(1)}`} |`,
+          ),
+          "",
+          "## Note",
+          "",
+          "Static estimates only — WCET is a CFG longest-path bound under the profile's",
+          "loop bounds, not a hardware proof. CPU/frequency come from run control.",
+          "",
+        ];
+        contents = lines.join("\n");
+      } else {
+        contents = JSON.stringify(
+          {
+            elf: elfPath,
+            cpu,
+            frequency: freq,
+            profileA: { name: profileName(profiles, profileA), path: profileA },
+            profileB: { name: profileName(profiles, profileB), path: profileB },
+            metrics: counterRows.map(([label, value]) => ({
+              metric: label,
+              a: value(summaryA),
+              b: value(summaryB),
+            })),
+            wcet: rows.map((row) => ({
+              root: row.root,
+              a: row.a ?? null,
+              b: row.b ?? null,
+              delta_cycles: row.delta,
+            })),
+            timing_model: {
+              a: summaryA.model,
+              b: summaryB.model,
+            },
+          },
+          null,
+          2,
+        );
+      }
+      await writeTextFile(target, contents);
+      setExportNote(`saved ${target}`);
+    } catch (reason) {
+      setExportNote(String(reason));
+    }
+  };
+
   return (
     <section className="bin-compare">
       <div className="analysis-toolbar">
@@ -226,14 +333,31 @@ export function BinaryCompare({
             then compares WCET roots and static-analysis counters.
           </div>
         </div>
-        <button
-          className="btn small accent"
-          disabled={running || !profileA || !profileB || profileA === profileB}
-          onClick={() => void runComparison()}
-        >
-          {running ? "COMPARING…" : "RUN COMPARISON"}
-        </button>
+        <div className="action-row">
+          <button
+            className="btn small accent"
+            disabled={running || !profileA || !profileB || profileA === profileB}
+            onClick={() => void runComparison()}
+          >
+            {running ? "COMPARING…" : "RUN COMPARISON"}
+          </button>
+          <button
+            className="btn small"
+            disabled={!summaryA || !summaryB}
+            onClick={() => void exportComparison("md")}
+          >
+            EXPORT MD
+          </button>
+          <button
+            className="btn small"
+            disabled={!summaryA || !summaryB}
+            onClick={() => void exportComparison("json")}
+          >
+            EXPORT JSON
+          </button>
+        </div>
       </div>
+      {exportNote && <div className="faint analysis-note">{exportNote}</div>}
 
       <div className="bin-compare-pickers">
         <label>
