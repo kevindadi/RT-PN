@@ -1,5 +1,5 @@
 {
-  "cfg_schema_version": "1.7",
+  "cfg_schema_version": "2.4",
   "image": {
     "path": "artifacts/cortex-m0-isr.elf",
     "arch": "thumb",
@@ -10,6 +10,114 @@
     "has_debug_info": true,
     "has_relocations": true
   },
+  "timing": {
+    "models": [
+      {
+        "id": "cortex-m0",
+        "arch": "thumb",
+        "core": "Cortex-M0",
+        "determinism": "bounded",
+        "table_version": "0.2.0-m3",
+        "params": {},
+        "caveats": [
+          "Core-cycle estimate excludes flash wait states, bus contention, interrupts and caches.",
+          "Cortex-M0/M0+ modeled as a single-issue in-order pipeline."
+        ]
+      }
+    ],
+    "frequency_domains": [
+      {
+        "id": "clk:core",
+        "name": "core",
+        "hz": 48000000,
+        "source": "cli",
+        "confidence": "high"
+      }
+    ],
+    "default_frequency_domain": "clk:core",
+    "caveats": [
+      "Static timing estimates are not WCET bounds; loop bounds and execution counts are not inferred."
+    ]
+  },
+  "roots": [
+    {
+      "function": "fn:0x8000138",
+      "kind": "isr",
+      "name": "USART1_IRQHandler",
+      "vector": 53,
+      "irq": 37,
+      "confidence": "high"
+    },
+    {
+      "function": "fn:0x8000150",
+      "kind": "main",
+      "name": "main",
+      "confidence": "high"
+    },
+    {
+      "function": "fn:0x8000160",
+      "kind": "startup",
+      "name": "startup",
+      "confidence": "high"
+    }
+  ],
+  "calls": [
+    {
+      "caller": "fn:0x8000118",
+      "callee": "fn:0x80000ec",
+      "site": "0x800011e",
+      "direct": true,
+      "tail": false,
+      "conditional": false,
+      "heuristic": false,
+      "unresolved": false,
+      "confidence": "high"
+    },
+    {
+      "caller": "fn:0x8000150",
+      "callee": "fn:0x8000118",
+      "site": "0x8000154",
+      "direct": true,
+      "tail": false,
+      "conditional": false,
+      "heuristic": false,
+      "unresolved": false,
+      "confidence": "high"
+    },
+    {
+      "caller": "fn:0x8000150",
+      "callee": "fn:0x80000ec",
+      "site": "0x800015a",
+      "direct": true,
+      "tail": false,
+      "conditional": false,
+      "heuristic": false,
+      "unresolved": false,
+      "confidence": "high"
+    },
+    {
+      "caller": "fn:0x8000160",
+      "callee": "fn:0x80000d8",
+      "site": "0x8000164",
+      "direct": true,
+      "tail": false,
+      "conditional": false,
+      "heuristic": false,
+      "unresolved": false,
+      "confidence": "high"
+    },
+    {
+      "caller": "fn:0x8000160",
+      "callee": "fn:0x8000150",
+      "site": "0x8000168",
+      "direct": true,
+      "tail": false,
+      "conditional": false,
+      "heuristic": false,
+      "unresolved": false,
+      "confidence": "high"
+    }
+  ],
   "functions": [
     {
       "id": "fn:0x80000d8",
@@ -48,6 +156,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 19,
@@ -86,6 +203,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x80000e8",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 8
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 20,
@@ -124,6 +251,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 20,
@@ -181,6 +318,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 21,
@@ -236,6 +382,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 23,
@@ -293,6 +448,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "r7",
+                  "disp": 4
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 23,
@@ -344,6 +508,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x8000114",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 28
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 25,
@@ -363,6 +537,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 25,
@@ -401,6 +585,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x8000114",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 20
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 25,
@@ -420,6 +614,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 25,
@@ -452,6 +656,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "r7",
+                  "disp": 4
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 24,
@@ -490,6 +703,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "r7",
+                  "disp": 4
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 24,
@@ -636,6 +858,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 27,
@@ -720,6 +951,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 29,
@@ -821,6 +1061,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x8000134",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 16
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 31,
@@ -840,6 +1090,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 31,
@@ -897,6 +1157,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x8000134",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 8
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 31,
@@ -916,6 +1186,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 31,
@@ -973,6 +1253,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 32,
@@ -1036,6 +1325,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 34,
@@ -1074,6 +1372,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x800014c",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 12
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 35,
@@ -1093,6 +1401,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 35,
@@ -1131,6 +1449,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "address": "0x800014c",
+                  "width": 4,
+                  "resolution": "direct",
+                  "base": "pc",
+                  "disp": 8
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 35,
@@ -1150,6 +1478,16 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "address": "0x20000000",
+                  "width": 4,
+                  "resolution": "register",
+                  "base": "r3",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 35,
@@ -1207,6 +1545,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "read",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 36,
@@ -1263,6 +1610,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 38,
@@ -1486,6 +1842,15 @@
               "is_conditional": false,
               "direct_target": null,
               "indirect": null,
+              "memory_accesses": [
+                {
+                  "kind": "write",
+                  "width": 4,
+                  "resolution": "unresolved",
+                  "base": "sp",
+                  "disp": 0
+                }
+              ],
               "source": {
                 "file": "main.c",
                 "line": 45,

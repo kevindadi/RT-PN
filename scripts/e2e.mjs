@@ -46,13 +46,30 @@ try {
   }
   if (!exists(elfFixture)) throw new Error(`missing ELF fixture: ${elfFixture}`);
 
-  // ---- 1. ELF -> TDG JSON -------------------------------------------------
-  const tdgJson = path.join(paths.e2e, "rust-concurrency.tdg.json");
-  run(elf2tdg, [elfFixture, "--format", "json", "--output", tdgJson]);
-  requireFile(tdgJson);
-  const tdg = JSON.parse(fs.readFileSync(tdgJson, "utf8"));
-  if (typeof tdg !== "object" || tdg === null) throw new Error("elf2tdg did not emit a JSON object");
-  log(`elf2tdg TDG JSON fields: ${Object.keys(tdg).slice(0, 8).join(", ")}`);
+  // ---- 1. ELF -> CFG system export (schema 2.4) --------------------------
+  const cfgSystem = path.join(paths.e2e, "rust-concurrency.cfg.json");
+  run(elf2tdg, [
+    elfFixture,
+    "--cpu", "cortex-m4",
+    "--format", "json",
+    "--output", cfgSystem,
+  ]);
+  requireFile(cfgSystem);
+  const systemCfg = JSON.parse(fs.readFileSync(cfgSystem, "utf8"));
+  if (typeof systemCfg !== "object" || systemCfg === null) {
+    throw new Error("elf2tdg did not emit a JSON object");
+  }
+  if (!systemCfg.cfg_schema_version || !Array.isArray(systemCfg.functions)) {
+    throw new Error("elf2tdg system export is missing cfg_schema_version/functions");
+  }
+  if (!Array.isArray(systemCfg.timing?.models) || systemCfg.timing.models.length === 0) {
+    throw new Error("elf2tdg system export is missing timing models");
+  }
+  log(
+    `elf2tdg CFG system export: schema ${systemCfg.cfg_schema_version}, ` +
+      `${systemCfg.functions.length} functions, ${systemCfg.roots?.length ?? 0} roots, ` +
+      `${systemCfg.concurrency?.length ?? 0} concurrency sites`,
+  );
 
   // ---- 2. ELF layout + CFG views (workbench ELF workflow) -----------------
   const elfView = path.join(paths.e2e, "rust.elf.mmd");

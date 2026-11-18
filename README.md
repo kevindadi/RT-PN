@@ -35,29 +35,34 @@ graph.
 
 ### Binary analysis (code-first)
 
-`ELF` → readable ELF layout → readable CFG + preview image.
+`ELF` → readable ELF layout → program CFG (schema 2.4) → static timing
+analysis → report.
 
 The binary workflow is isolated from scheduling analysis: it has its own
-stages, inspector and sample (`examples/elf2tdg`), and never feeds an ELF
-into the PTPN analyzer.
+stages, inspector and sample (`examples/elf2tdg`), and never feeds an ELF into
+the PTPN analyzer. TDG output is gone; the program CFG is elf2tdg's primary
+analysis IR.
 
 Importing an `.elf`, `.out` or `.axf` binary now runs the bundled `elf2tdg`
-extractor instead of loading a pre-made parser bundle:
+extractor:
 
 1. `elf2tdg <elf> --view elf` writes a readable ELF loader view
-   (`<stem>.elf.mmd`, Mermaid layout source) shown in the `ELF` stage.
-2. `elf2tdg <elf> --view cfg --format json` writes a readable CFG document
-   (`<stem>.cfg.json`); the `CFG` stage renders a compact listing of functions,
-   blocks and calls, and `PREVIEW` shows the Graphviz SVG rendering of
-   `<stem>.cfg.dot` (falling back to an interactive function-level graph when
-   Graphviz is not installed).
-3. Raw `elf2tdg` outputs are kept next to the analysis artifacts
+   (`<stem>.elf.mmd`, Mermaid layout source).
+2. `elf2tdg <elf> --view cfg --format json` writes the lossless program CFG
+   (functions, blocks, instructions, typed edges, roots, calls, concurrency
+   annotations, diagnostics); `--format dot` feeds the Graphviz SVG preview.
+3. Optional analysis profiles drive the M3 timing features:
+   `--board-profile examples/elf2tdg/profiles/*.toml` (clocks, memory-region
+   wait states, instruction/data cache, branch prediction, WCET longest-path
+   analysis), `--cpu`, and `--freq`.
+4. Raw `elf2tdg` outputs are kept next to the analysis artifacts
    (`%LOCALAPPDATA%\RT-PN\artifacts\elf-*` on Windows; override with
    `PTPN_ARTIFACT_DIR`).
 
-Threads/net stages and the PTPN analysis backend are intentionally pending:
-these views are parser artifacts and previews, not a certified schedulability
-verdict. The Rust Petri-net simulator backend is developed separately.
+Static cycle counts are estimates, not certified WCET bounds; the timing
+model caveats must stay visible in the UI. The proposed CFG-first interface
+(overview, function index, graph explorer, analysis cards, inspector) is
+documented in [docs/elf2tdg-ui-design.md](docs/elf2tdg-ui-design.md).
 
 ## Development
 
