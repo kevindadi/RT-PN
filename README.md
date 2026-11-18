@@ -158,7 +158,10 @@ state-class graph: the deadlock counterexample path when one exists, otherwise
 the shortest path to a state class chosen from the dropdown. Play/pause,
 step-forward/back, reset, speed and a clickable state timeline are available.
 Each step shows the marking (place tokens), the selected active set `E_pri`,
-suspended transitions, the fired transition and the elapsed time.
+suspended transitions, the fired transition and the elapsed time. A WCRT
+envelope strip under the replay controls draws one bar per task (with deadline
+ticks and deadline-miss colouring) and moves a playhead to the current step's
+elapsed time, linking the state-class trace to the analyzed response windows.
 
 `EXPORT HTML` writes a self-contained offline player (same panels/controls,
 autoplaying, no external assets) and `EXPORT JSON` writes the raw step data;
@@ -171,7 +174,9 @@ the scheduling policies, run them on the same model (bounded to 5 000 states /
 shows its own deadlock counterexample or shortest path with marking tokens, the
 fired transition, elapsed time and the selected active set `E_pri`, which makes
 the difference between schedulers (e.g. lock inheritance under PCP/PIP) directly
-visible.
+visible. `EXPORT HTML` / `EXPORT JSON` in comparison mode write the same
+self-contained multi-lane player or the raw lane data (model name, tie mode and
+the per-policy budget included), ready for papers or review bundles.
 
 The EDF/FIFO/LLF notes reflect the engine's documented constraints (statically
 partitioned multi-core, no locks, deterministic segments for event-driven LLF).

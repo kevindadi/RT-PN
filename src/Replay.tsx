@@ -5,6 +5,66 @@ import { writeTextFile } from "./api";
 import { buildReplayHtml, type ReplayExport } from "./replayExport";
 import type { StateGraph, TraceStep } from "./types";
 
+export interface ReplayTask {
+  name?: string;
+  wcrt?: number;
+  deadline?: number;
+  deadline_missed?: boolean;
+}
+
+function GanttSync({
+  tasks,
+  elapsed,
+  policy,
+}: {
+  tasks: ReplayTask[];
+  elapsed: number;
+  policy?: string;
+}) {
+  if (tasks.length === 0) return null;
+  const scale = Math.max(1, ...tasks.map((task) => Math.max(task.wcrt ?? 0, task.deadline ?? 0)));
+  const cursor = Math.min(100, (elapsed / scale) * 100);
+  return (
+    <section className="replay-gantt">
+      <div className="replay-gantt-head">
+        <span className="sem-eyebrow">WCRT ENVELOPE · PLAYHEAD</span>
+        <span className="mono replay-gantt-time">t = {elapsed}</span>
+        {policy && <span className="faint replay-gantt-policy">{policy}</span>}
+      </div>
+      <div className="replay-gantt-body">
+        {tasks.map((task) => {
+          const wcrt = task.wcrt ?? 0;
+          const deadline = task.deadline ?? 0;
+          const missed = task.deadline_missed ?? (deadline > 0 && wcrt > deadline);
+          const active = elapsed > 0 && elapsed <= wcrt;
+          return (
+            <div className="replay-gantt-row" key={task.name ?? "task"}>
+              <span className="replay-gantt-name">{task.name ?? "task"}</span>
+              <div className={`replay-gantt-track ${active ? "active" : ""}`}>
+                <div
+                  className={`replay-gantt-bar ${missed ? "missed" : ""}`}
+                  style={{ width: `${Math.min(100, (wcrt / scale) * 100)}%` }}
+                />
+                {deadline > 0 && (
+                  <div
+                    className="replay-gantt-deadline"
+                    title="deadline"
+                    style={{ left: `${Math.min(100, (deadline / scale) * 100)}%` }}
+                  />
+                )}
+                <div className="replay-gantt-cursor" style={{ left: `${cursor}%` }} />
+              </div>
+              <span className="replay-gantt-value">
+                {deadline > 0 ? `${wcrt} / ${deadline}` : wcrt}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 interface ReplayStep {
   state: string;
   transition: string;
@@ -120,6 +180,7 @@ export function ScgReplay({
   modelLabel,
   policy,
   tie,
+  tasks,
   onCompare,
 }: {
   scg: StateGraph;
@@ -127,6 +188,7 @@ export function ScgReplay({
   modelLabel?: string;
   policy?: string;
   tie?: string;
+  tasks?: ReplayTask[];
   onCompare?: () => void;
 }) {
   const hasTrace = Boolean(trace && trace.length > 0);
@@ -333,6 +395,8 @@ export function ScgReplay({
           </select>
         )}
       </div>
+
+      <GanttSync tasks={tasks ?? []} elapsed={Number(current.elapsed) || 0} policy={policy} />
 
       <div className="replay-stage">
         <section className="replay-panel">

@@ -1777,6 +1777,7 @@ export default function App() {
                     maxStates={Math.min(budget.maxStates, 5_000)}
                     timeoutSecs={Math.min(budget.timeoutSecs || 20, 20)}
                     tie={tie}
+                    modelLabel={displayName}
                   />
                 ) : (
                   <ScgReplay
@@ -1785,6 +1786,7 @@ export default function App() {
                     modelLabel={displayName}
                     policy={policyInfo.label}
                     tie={tie}
+                    tasks={taskMetrics}
                     onCompare={openPolicyCompare}
                   />
                 )

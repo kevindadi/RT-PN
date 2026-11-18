@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 
+import { writeTextFile } from "./api";
+import { buildCompareHtml, type CompareExport } from "./replayCompareExport";
 import { SCHEDULING_POLICIES } from "./Semantics";
 import { parseEntries, parseMarking, type ReplayStep } from "./replayModel";
 
@@ -58,6 +61,7 @@ export function ReplayCompare({
   maxStates,
   timeoutSecs,
   tie,
+  modelLabel,
 }: {
   lanes: CompareLane[];
   busy: boolean;
@@ -69,12 +73,15 @@ export function ReplayCompare({
   maxStates: number;
   timeoutSecs: number;
   tie: string;
+  modelLabel?: string;
 }) {
   const maxSteps = Math.max(1, ...lanes.map((lane) => lane.steps.length));
   const last = maxSteps - 1;
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState("");
 
   useEffect(() => {
     setIndex(0);
@@ -90,6 +97,52 @@ export function ReplayCompare({
     const timer = window.setTimeout(() => setIndex((current) => Math.min(current + 1, last)), 950 / speed);
     return () => window.clearTimeout(timer);
   }, [playing, index, last, speed]);
+
+  const exportComparison = async (format: "html" | "json") => {
+    setExporting(true);
+    setExportNote("");
+    try {
+      const payload: CompareExport = {
+        version: 1,
+        model: modelLabel || "model",
+        tie,
+        generatedAt: new Date().toISOString(),
+        maxStates,
+        timeoutSecs,
+        lanes: lanes.map((lane) => ({
+          policy: lane.policy,
+          label: lane.label,
+          status: lane.status,
+          mode: lane.mode,
+          error: lane.error,
+          steps: lane.steps,
+        })),
+      };
+      const base =
+        (modelLabel || "comparison")
+          .replace(/[^A-Za-z0-9._-]+/g, "_")
+          .replace(/^_+|_+$/g, "") || "comparison";
+      const target = await save({
+        defaultPath: `${base}.compare.${format}`,
+        filters: [
+          {
+            name: format === "html" ? "Self-contained comparison" : "Comparison JSON",
+            extensions: [format],
+          },
+        ],
+      });
+      if (!target) return;
+      await writeTextFile(
+        target,
+        format === "html" ? buildCompareHtml(payload) : JSON.stringify(payload, null, 2),
+      );
+      setExportNote(`saved · ${target}`);
+    } catch (reason) {
+      setExportNote(String(reason));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="cmp">
@@ -107,6 +160,21 @@ export function ReplayCompare({
           <button className="btn small" onClick={onClose}>
             CLOSE COMPARISON
           </button>
+          <button
+            className="btn small"
+            disabled={exporting || lanes.length === 0}
+            onClick={() => void exportComparison("html")}
+          >
+            EXPORT HTML
+          </button>
+          <button
+            className="btn small"
+            disabled={exporting || lanes.length === 0}
+            onClick={() => void exportComparison("json")}
+          >
+            EXPORT JSON
+          </button>
+          {exportNote && <span className="replay-note">{exportNote}</span>}
         </div>
       </header>
 
