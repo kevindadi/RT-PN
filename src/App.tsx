@@ -1503,7 +1503,7 @@ export default function App() {
           onBinaryExample={() => void openElfExample()}
         />
         <footer className="chooser-foot">
-          RT-PN 0.2.0 · Phase A information architecture · Two independent workspaces.
+          RT-PN 0.2.1 · instruction timing & coverage · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>

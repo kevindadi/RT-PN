@@ -3225,6 +3225,135 @@ textarea {
   border-color: #8f7bff;
 }
 
+/* ---------- instruction timing editor ---------- */
+
+.timing-editor {
+  margin-top: 14px;
+  padding: 16px 18px 18px;
+  border: 1px solid #17304d;
+  border-radius: 10px;
+  background: #08111f;
+}
+
+.timing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.timing-card {
+  padding: 12px 14px;
+  border: 1px solid #17304d;
+  border-radius: 8px;
+  background: rgba(10, 19, 34, 0.7);
+}
+
+.coverage-bars {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.coverage-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono) !important;
+  font-size: 9px;
+  color: #a9bfd6;
+}
+
+.coverage-row b {
+  text-align: right;
+  font-weight: 500;
+  color: #d9ccff;
+}
+
+.coverage-track {
+  height: 5px;
+  border-radius: 999px;
+  background: #12253d;
+  overflow: hidden;
+}
+
+.coverage-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4fa3ff, #b49bff);
+}
+
+.timing-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.timing-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 130px;
+}
+
+.timing-form label.narrow,
+.timing-form label:has(input[type="number"]) {
+  min-width: 84px;
+}
+
+.timing-form span {
+  font-family: var(--font-mono) !important;
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  color: #6f8299;
+}
+
+.timing-form select,
+.timing-form input {
+  padding: 5px 8px;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  background: #0b1422;
+  color: #dce8f5;
+  font-family: var(--font-mono) !important;
+  font-size: 10px;
+}
+
+.timing-form select:focus,
+.timing-form input:focus {
+  outline: 1px solid #8f7bff;
+  border-color: #8f7bff;
+}
+
+.timing-raw {
+  margin-top: 12px;
+}
+
+.timing-raw summary {
+  cursor: pointer;
+  color: #9db4cc;
+  font-family: var(--font-mono) !important;
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
+}
+
+.timing-raw textarea {
+  width: 100%;
+  min-height: 180px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #1d3350;
+  border-radius: 6px;
+  background: #060d18;
+  color: #cfe6ff;
+  font-family: var(--font-mono) !important;
+  font-size: 10px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
 /* ---------- Mermaid preview overlay ---------- */
 
 .mermaid-overlay {

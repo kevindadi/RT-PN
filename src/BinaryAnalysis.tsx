@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 
-import { readTextFile, writeTextFile } from "./api";
+import { writeTextFile } from "./api";
+import { InstructionTiming } from "./InstructionTiming";
 import type { ElfWorkflow } from "./types";
 
 const record = (value: unknown): Record<string, unknown> | null =>
@@ -67,48 +68,7 @@ export function BinaryAnalysisView({
   const profileSource = str(extras?.board_profile_source);
   const frequency = num(wcet?.frequency_hz);
 
-  const [profileText, setProfileText] = useState("");
-  const [profileBusy, setProfileBusy] = useState(false);
-  const [profileNote, setProfileNote] = useState("");
   const [exportNote, setExportNote] = useState("");
-
-  useEffect(() => {
-    if (!boardProfile) {
-      setProfileText("");
-      return;
-    }
-    let alive = true;
-    setProfileBusy(true);
-    readTextFile(boardProfile)
-      .then((text) => {
-        if (alive) setProfileText(text);
-      })
-      .catch((reason) => {
-        if (alive) setProfileNote(String(reason));
-      })
-      .finally(() => {
-        if (alive) setProfileBusy(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [boardProfile]);
-
-  const saveProfileAs = async () => {
-    setProfileNote("");
-    try {
-      const target = await save({
-        defaultPath: "board-profile.toml",
-        filters: [{ name: "Board profile", extensions: ["toml"] }],
-      });
-      if (!target) return;
-      await writeTextFile(target, profileText);
-      onProfileSaved(target);
-      setProfileNote(`saved ${target} — re-run with the profile to apply it`);
-    } catch (reason) {
-      setProfileNote(String(reason));
-    }
-  };
 
   const reproduceCommand = [
     "elf2tdg",
@@ -383,33 +343,11 @@ export function BinaryAnalysisView({
         )}
       </div>
 
-      <section className="analysis-editor">
-        <div className="sem-eyebrow">BOARD PROFILE EDITOR</div>
-        {boardProfile ? (
-          <>
-            <div className="mono faint analysis-note">{boardProfile}</div>
-            <textarea
-              value={profileText}
-              spellCheck={false}
-              onChange={(event) => setProfileText(event.target.value)}
-              placeholder="loading profile…"
-            />
-            <div className="action-row">
-              <button className="btn small accent" onClick={() => void saveProfileAs()}>
-                SAVE AS…
-              </button>
-              <span className="faint">
-                {profileBusy ? "loading…" : "edit the TOML, save a copy, then re-run with it"}
-              </span>
-            </div>
-            {profileNote && <div className="faint analysis-note">{profileNote}</div>}
-          </>
-        ) : (
-          <div className="faint">
-            Select a board profile in the sidebar to inspect and edit its TOML here.
-          </div>
-        )}
-      </section>
+      <InstructionTiming
+        binary={binary}
+        boardProfile={boardProfile}
+        onProfileSaved={onProfileSaved}
+      />
     </div>
   );
 }

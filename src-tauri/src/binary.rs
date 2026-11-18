@@ -47,6 +47,84 @@ pub struct BinaryAnalysis {
     pub caveats: Vec<String>,
 }
 
+/// Instruction-class coverage derived from the analyzed CFG.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct BinaryCoverage {
+    pub total_instructions: usize,
+    pub classes: Vec<Value>,
+    pub unknown_mnemonics: usize,
+}
+
+fn timing_class(mnemonic: &str) -> &'static str {
+    let mnemonic = mnemonic.trim().to_ascii_lowercase();
+    let mnemonic = mnemonic.strip_suffix(".w").or_else(|| mnemonic.strip_suffix(".n")).unwrap_or(&mnemonic);
+    match mnemonic {
+        "push" | "pop" => "push-pop",
+        "ldm" | "ldmia" | "ldmdb" | "stm" | "stmia" | "stmdb" => "ldm-stm",
+        "ldr" | "ldrb" | "ldrh" | "ldrsb" | "ldrsh" | "ldrd" | "ldrex" | "ldrexd"
+        | "ldrt" | "ldrexb" | "ldrexh" => "load",
+        "str" | "strb" | "strh" | "strd" | "strex" | "strexd" | "strt" | "strexb"
+        | "strexh" => "store",
+        "b" | "bx" | "bxj" | "cbz" | "cbnz" => "branch",
+        "bl" | "blx" => "call",
+        "nop" => "nop",
+        "mul" | "mla" | "mls" | "umull" | "smull" | "umlal" | "smlal" | "smulbb"
+        | "smulbt" | "smlabb" | "smlabt" | "smulwb" | "smulwt" => "multiply",
+        "sdiv" | "udiv" => "divide",
+        "dmb" | "dsb" | "isb" | "barrier" => "barrier",
+        _ => "alu",
+    }
+}
+
+fn coverage(cfg: &Value, timing: &Value) -> BinaryCoverage {
+    let mut counts: std::collections::BTreeMap<&'static str, usize> =
+        std::collections::BTreeMap::new();
+    let mut total = 0usize;
+    if let Some(functions) = cfg.get("functions").and_then(Value::as_array) {
+        for function in functions {
+            if let Some(blocks) = function.get("blocks").and_then(Value::as_array) {
+                for block in blocks {
+                    if let Some(instructions) =
+                        block.get("instructions").and_then(Value::as_array)
+                    {
+                        for instruction in instructions {
+                            total += 1;
+                            let mnemonic = instruction
+                                .get("mnemonic")
+                                .and_then(Value::as_str)
+                                .unwrap_or("other");
+                            *counts.entry(timing_class(mnemonic)).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut class_rows: Vec<(String, usize)> = counts
+        .into_iter()
+        .map(|(class, count)| (class.to_string(), count))
+        .collect();
+    class_rows.sort_by(|a, b| b.1.cmp(&a.1));
+    let classes = class_rows
+        .into_iter()
+        .map(|(class, count)| serde_json::json!({ "class": class, "count": count }))
+        .collect();
+    let unknown = timing
+        .get("models")
+        .and_then(Value::as_array)
+        .and_then(|models| models.first())
+        .and_then(|model| model.get("params"))
+        .and_then(|params| params.get("extras"))
+        .and_then(|extras| extras.get("unknown_instruction_mnemonics"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    BinaryCoverage {
+        total_instructions: total,
+        classes,
+        unknown_mnemonics: unknown,
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ElfWorkflow {
     pub elf_path: PathBuf,
@@ -72,6 +150,7 @@ pub struct ElfWorkflow {
     pub cfg_diagnostics: Vec<Value>,
     pub caveats: Vec<String>,
     pub analysis: BinaryAnalysis,
+    pub coverage: BinaryCoverage,
 }
 
 fn rule() -> String {
@@ -901,6 +980,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         branch_prediction,
         caveats: analysis_caveats,
     };
+    let coverage = coverage(&cfg, &timing);
 
     Ok(ElfWorkflow {
         elf_path: elf.to_path_buf(),
@@ -926,6 +1006,7 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
         cfg_diagnostics,
         caveats,
         analysis,
+        coverage,
     })
 }
 

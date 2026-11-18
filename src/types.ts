@@ -229,6 +229,12 @@ export interface BinaryAnalysis {
   caveats: string[];
 }
 
+export interface BinaryCoverage {
+  total_instructions: number;
+  classes: Array<{ class: string; count: number }>;
+  unknown_mnemonics: number;
+}
+
 export interface ElfWorkflow {
   elf_path: string;
   file_size: number;
@@ -253,6 +259,7 @@ export interface ElfWorkflow {
   cfg_diagnostics: Array<Record<string, unknown>>;
   caveats: string[];
   analysis: BinaryAnalysis;
+  coverage: BinaryCoverage;
 }
 
 export interface EngineInfo {
