@@ -45,11 +45,17 @@ fn database() -> Result<Connection, String> {
                 options TEXT,
                 latest_wcet_root TEXT,
                 latest_wcet_cycles REAL,
+                run_count INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 last_opened INTEGER NOT NULL
             );",
         )
         .map_err(|error| format!("cannot create workspace schema: {error}"))?;
+    // Migration for workspace databases created before run_count existed.
+    let _ = connection.execute(
+        "ALTER TABLE projects ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     Ok(connection)
 }
 
@@ -154,11 +160,11 @@ pub fn save_project(
     connection
         .execute(
             "INSERT INTO projects (id, name, dir, elf_path, arch, functions, profile, options,
-                latest_wcet_root, latest_wcet_cycles, created_at, last_opened)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
+                latest_wcet_root, latest_wcet_cycles, run_count, created_at, last_opened)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, ?11)
              ON CONFLICT(id) DO UPDATE SET name=?2, dir=?3, elf_path=?4, arch=?5,
                 functions=?6, profile=?7, options=?8, latest_wcet_root=?9,
-                latest_wcet_cycles=?10, last_opened=?11",
+                latest_wcet_cycles=?10, run_count = projects.run_count + 1, last_opened=?11",
             params![
                 id,
                 name,
@@ -183,7 +189,7 @@ pub fn recent(limit: Option<u32>) -> Result<Value, String> {
     let mut statement = connection
         .prepare(
             "SELECT id, name, elf_path, arch, functions, profile, latest_wcet_root,
-                    latest_wcet_cycles, last_opened FROM projects
+                    latest_wcet_cycles, run_count, last_opened FROM projects
              ORDER BY last_opened DESC LIMIT ?1",
         )
         .map_err(|error| format!("cannot query projects: {error}"))?;
@@ -198,7 +204,8 @@ pub fn recent(limit: Option<u32>) -> Result<Value, String> {
                 "profile": row.get::<_, Option<String>>(5)?,
                 "latest_wcet_root": row.get::<_, Option<String>>(6)?,
                 "latest_wcet_cycles": row.get::<_, Option<f64>>(7)?,
-                "last_opened": row.get::<_, i64>(8)?,
+                "run_count": row.get::<_, i64>(8)?,
+                "last_opened": row.get::<_, i64>(9)?,
             }))
         })
         .map_err(|error| format!("cannot read projects: {error}"))?;

@@ -222,6 +222,7 @@ export interface WorkspaceProject {
   profile?: string;
   latest_wcet_root?: string;
   latest_wcet_cycles?: number;
+  run_count?: number;
   last_opened?: number;
 }
 

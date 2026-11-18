@@ -1594,7 +1594,7 @@ export default function App() {
                     <b>{project.name}</b>
                     <small>
                       {project.arch || "—"} · {project.functions ?? "?"} functions ·{" "}
-                      {project.profile || "no board profile"}
+                      {project.run_count ?? 0} runs · {project.profile || "no board profile"}
                     </small>
                     <span className="mono faint">
                       {project.latest_wcet_root
@@ -1636,7 +1636,7 @@ export default function App() {
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.1 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.3.2 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2762,6 +2762,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 
