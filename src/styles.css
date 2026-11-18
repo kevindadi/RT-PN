@@ -2916,6 +2916,28 @@ textarea {
   border-radius: 10px;
   overflow: hidden;
   background: #08111f;
+  position: relative;
+}
+
+.cfg-path-badge {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 4;
+  padding: 3px 8px;
+  border: 1px solid #8a6d24;
+  border-radius: 4px;
+  background: rgba(36, 29, 12, 0.9);
+  color: #f2c14e;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.6px;
+  pointer-events: none;
+}
+
+.cfg-node.on-path {
+  border-color: #f2c14e;
+  box-shadow: 0 0 14px rgba(242, 193, 78, 0.38);
 }
 
 .cfg-node {
@@ -3195,6 +3217,71 @@ textarea {
 .analysis-editor textarea:focus {
   outline: 1px solid #8f7bff;
   border-color: #8f7bff;
+}
+
+/* ---------- Mermaid preview overlay ---------- */
+
+.mermaid-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 26px;
+  background: rgba(4, 9, 16, 0.82);
+  backdrop-filter: blur(4px);
+  animation: sem-rise 180ms ease-out both;
+}
+
+.mermaid-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1240px, 100%);
+  max-height: 92vh;
+  border: 1px solid #244a73;
+  border-radius: 12px;
+  background: #08111f;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.mermaid-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #17304d;
+}
+
+.mermaid-head h3 {
+  margin: 3px 0 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: #e8e2ff;
+}
+
+.mermaid-body {
+  flex: 1 1 auto;
+  min-height: 240px;
+  overflow: auto;
+  padding: 16px 18px;
+  background:
+    radial-gradient(800px 360px at 20% -10%, rgba(143, 123, 255, 0.08), transparent 60%);
+}
+
+.mermaid-body .mmd-canvas svg {
+  max-width: none;
+}
+
+.mermaid-foot {
+  padding: 10px 18px;
+  border-top: 1px solid #17304d;
+  color: #7c8ca8;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
 }
 
 /* ---------- compact analysis sidebar ---------- */

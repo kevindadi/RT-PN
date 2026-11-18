@@ -124,8 +124,8 @@ const STAGES: Record<
   elf: {
     label: "ELF",
     title: "ELF LAYOUT",
-    subtitle: "Readable ELF loader view rendered from Mermaid",
-    previewable: false,
+    subtitle: "Readable ELF layout as text · PREVIEW renders the Mermaid image",
+    previewable: true,
   },
   overview: {
     label: "OVERVIEW",
@@ -577,8 +577,14 @@ function valueString(value: unknown): string {
 }
 
 function analysisModelId(binary: ElfWorkflow): string {
-  return valueString(binary.analysis.model.id) || "no timing model";
+  const model = binary.analysis?.model;
+  if (model === null || typeof model !== "object") return "no timing model";
+  return valueString((model as Record<string, unknown>).id) || "no timing model";
 }
+
+/** Guard rails so a huge Mermaid/text layout never blocks the workbench. */
+const ELF_PREVIEW_CHAR_LIMIT = 400_000;
+const ELF_TEXT_CHAR_LIMIT = 1_500_000;
 
 function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -600,6 +606,11 @@ export default function App() {
   });
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+  const [mermaidPreview, setMermaidPreview] = useState<{
+    chart: string;
+    title: string;
+    footer: string;
+  } | null>(null);
   const [cli, setCli] = useState<EngineHealth | null>(null);
   const [elf2tdg, setElf2tdg] = useState<EngineHealth | null>(null);
   const [budget, setBudget] = useState<Budget>({
@@ -629,6 +640,7 @@ export default function App() {
   const [functionCfg, setFunctionCfg] = useState<BinaryFunctionCfg | null>(null);
   const [cfgLoading, setCfgLoading] = useState(false);
   const [cfgError, setCfgError] = useState<string | null>(null);
+  const [wcetPath, setWcetPath] = useState<string[] | null>(null);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -651,7 +663,7 @@ export default function App() {
       : activeStage === "functions"
         ? `${binary.function_rows.length} functions · click a row to open the CFG`
         : activeStage === "analysis"
-          ? `${analysisModelId(binary)} · ${binary.analysis.caveats.length} caveats`
+          ? `${analysisModelId(binary)} · ${binary.analysis?.caveats?.length ?? 0} caveats`
           : activeStage === "elf"
           ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
           : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
@@ -766,6 +778,7 @@ export default function App() {
     async (path: string, newProject: boolean) => {
       setPreview(null);
       setImagePreview(null);
+      setMermaidPreview(null);
       setHub(false);
       setWorkflow("spec");
       setBinary(null);
@@ -1048,6 +1061,7 @@ export default function App() {
     async (path: string, newProject: boolean) => {
       setPreview(null);
       setImagePreview(null);
+      setMermaidPreview(null);
       setHub(false);
       setWorkflow("binary");
       setAnalysis(null);
@@ -1064,6 +1078,7 @@ export default function App() {
       setFunctionCfg(null);
       setCfgSelector(null);
       setCfgError(null);
+      setWcetPath(null);
       try {
         const payload = await analyzeElf(path, binaryOptions);
         setBinary(payload);
@@ -1099,6 +1114,7 @@ export default function App() {
   const loadFunctionCfg = useCallback(
     async (selector: string) => {
       if (!currentPath || !selector) return;
+      setWcetPath(null);
       setCfgSelector(selector);
       setCfgLoading(true);
       setCfgError(null);
@@ -1345,7 +1361,38 @@ export default function App() {
 
   const openPreview = () => {
     if (isBinary) {
-      if (activeStage !== "cfg" || !binary) return;
+      if (!binary) return;
+      if (activeStage === "elf") {
+        const layout = binary.elf_mermaid ?? "";
+        const artifact = `${binary.artifacts_dir}\\${fileName(binary.elf_path).replace(/\.[^.]+$/, "")}.elf.mmd`;
+        if (!layout) {
+          setDetail({
+            title: "ELF PREVIEW",
+            body: "No Mermaid layout was produced for this image.",
+          });
+          return;
+        }
+        if (layout.length > ELF_PREVIEW_CHAR_LIMIT) {
+          setStatus({ text: "PREVIEW SKIPPED", tone: "warn" });
+          setDetail({
+            title: "ELF PREVIEW TOO LARGE",
+            body:
+              `The Mermaid layout is ${(layout.length / 1024).toFixed(0)} KB, over the ` +
+              `${(ELF_PREVIEW_CHAR_LIMIT / 1024).toFixed(0)} KB preview limit.\n\n` +
+              `Open the artifact directly instead:\n${artifact}`,
+          });
+          return;
+        }
+        setMermaidPreview({
+          chart: layout,
+          title: `${fileName(binary.elf_path)} · ELF LAYOUT`,
+          footer:
+            `Mermaid source ${(layout.length / 1024).toFixed(1)} KB ` +
+            `(limit ${(ELF_PREVIEW_CHAR_LIMIT / 1024).toFixed(0)} KB) · rendered locally`,
+        });
+        return;
+      }
+      if (activeStage !== "cfg") return;
       if (binary.cfg_svg) {
         setImagePreview({
           svg: binary.cfg_svg,
@@ -2098,13 +2145,16 @@ export default function App() {
               {activeStage === "overview" && isBinary && binary ? (
                 <BinaryOverview binary={binary} />
               ) : activeStage === "elf" && isBinary && binary ? (
-                binary.elf_mermaid ? (
-                  <div className="bin-mermaid">
-                    <Mermaid chart={binary.elf_mermaid} />
-                  </div>
-                ) : (
-                  <CodeStage doc={binary.elf_view} stageKey="binary-elf" />
-                )
+                <CodeStage
+                  doc={
+                    binary.elf_view.length > ELF_TEXT_CHAR_LIMIT
+                      ? `${binary.elf_view.slice(0, ELF_TEXT_CHAR_LIMIT)}\n\n` +
+                        `… layout truncated at ${(ELF_TEXT_CHAR_LIMIT / 1024).toFixed(0)} KB. ` +
+                        `Full artifact: ${binary.artifacts_dir}\\${fileName(binary.elf_path).replace(/\.[^.]+$/, "")}.elf.mmd`
+                      : binary.elf_view
+                  }
+                  stageKey="binary-elf"
+                />
               ) : activeStage === "functions" && isBinary && binary ? (
                 <BinaryFunctions
                   binary={binary}
@@ -2129,6 +2179,7 @@ export default function App() {
                   loading={cfgLoading}
                   error={cfgError}
                   selector={cfgSelector ?? ""}
+                  highlightPath={wcetPath}
                   onReload={() => {
                     if (cfgSelector) {
                       setFunctionCfg(null);
@@ -2143,6 +2194,19 @@ export default function App() {
                   onProfileSaved={(path) =>
                     setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
                   }
+                  onOpenPath={(selector, path) => {
+                    setWcetPath(path);
+                    setFunctionCfg(null);
+                    setCfgSelector(null);
+                    setActiveStage("cfg");
+                    void loadFunctionCfg(selector);
+                    setDetail({
+                      title: "WCET LONGEST PATH",
+                      body:
+                        `${selector}\n${path.length} blocks highlighted in the CFG\n` +
+                        "Static CFG longest-path estimate — not a hardware proof.",
+                    });
+                  }}
                 />
               ) : activeStage === "semantics" && !isBinary ? (
                 <SemanticsStage
@@ -2270,6 +2334,26 @@ export default function App() {
           footer={imagePreview.footer}
           onClose={() => setImagePreview(null)}
         />
+      )}
+
+      {mermaidPreview && (
+        <div className="mermaid-overlay" onClick={() => setMermaidPreview(null)}>
+          <div className="mermaid-dialog" onClick={(event) => event.stopPropagation()}>
+            <header className="mermaid-head">
+              <div>
+                <div className="sem-eyebrow">PREVIEW · MERMAID</div>
+                <h3>{mermaidPreview.title}</h3>
+              </div>
+              <button className="btn small" onClick={() => setMermaidPreview(null)}>
+                CLOSE
+              </button>
+            </header>
+            <div className="mermaid-body">
+              <Mermaid chart={mermaidPreview.chart} />
+            </div>
+            <footer className="mermaid-foot">{mermaidPreview.footer}</footer>
+          </div>
+        </div>
       )}
 
       {compareOpen && snapshots.length >= 2 && (

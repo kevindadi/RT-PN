@@ -21,6 +21,7 @@ type CfgNodeData = {
   block: BinaryCfgBlock;
   entry: boolean;
   selected: boolean;
+  onPath: boolean;
 };
 
 type CfgNode = Node<CfgNodeData, "cfgBlock">;
@@ -44,7 +45,7 @@ function CfgBlockCard({ data }: NodeProps<CfgNode>) {
   const instructions = block.instructions?.length ?? 0;
   return (
     <div
-      className={`cfg-node ${data.entry ? "entry" : ""} ${data.selected ? "selected" : ""} term-${(block.terminator ?? "none").replace(/[^a-z]/g, "")}`}
+      className={`cfg-node ${data.entry ? "entry" : ""} ${data.selected ? "selected" : ""} ${data.onPath ? "on-path" : ""} term-${(block.terminator ?? "none").replace(/[^a-z]/g, "")}`}
     >
       <Handle type="target" position={Position.Left} className="flow-handle" />
       <div className="cfg-node-head">
@@ -119,7 +120,7 @@ function layoutCfg(
       id: block.id,
       type: "cfgBlock",
       position: { x: level * 300, y: row * 128 },
-      data: { block, entry: block.id === start, selected: false },
+      data: { block, entry: block.id === start, selected: false, onPath: false },
     };
   });
   const flowEdges: Edge[] = validEdges.map((edge, index) => ({
@@ -210,12 +211,14 @@ export function BinaryCfg({
   loading,
   error,
   selector,
+  highlightPath,
   onReload,
 }: {
   cfg: BinaryFunctionCfg | null;
   loading: boolean;
   error: string | null;
   selector: string;
+  highlightPath?: string[] | null;
   onReload: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -229,13 +232,18 @@ export function BinaryCfg({
     return layoutCfg(cfg.blocks, cfg.edges, cfg.entry);
   }, [cfg]);
 
+  const pathSet = useMemo(() => new Set(highlightPath ?? []), [highlightPath]);
   const nodes = useMemo(
     () =>
       layout.nodes.map((node) => ({
         ...node,
-        data: { ...node.data, selected: node.id === selectedId },
+        data: {
+          ...node.data,
+          selected: node.id === selectedId,
+          onPath: pathSet.has(node.id),
+        },
       })),
-    [layout.nodes, selectedId],
+    [layout.nodes, pathSet, selectedId],
   );
 
   const selectedBlock = cfg?.blocks.find((block) => block.id === selectedId) ?? null;
@@ -293,6 +301,11 @@ export function BinaryCfg({
       </div>
 
       <div className="cfg-graph">
+        {pathSet.size > 0 && (
+          <div className="cfg-path-badge">
+            WCET LONGEST PATH · {pathSet.size} blocks highlighted
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={layout.edges}

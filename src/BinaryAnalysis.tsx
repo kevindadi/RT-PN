@@ -42,23 +42,26 @@ export function BinaryAnalysisView({
   binary,
   boardProfile,
   onProfileSaved,
+  onOpenPath,
 }: {
   binary: ElfWorkflow;
   boardProfile: string;
   onProfileSaved: (path: string) => void;
+  onOpenPath: (selector: string, path: string[]) => void;
 }) {
   const analysis = binary.analysis;
-  const model = analysis.model;
-  const profile = analysis.profile;
-  const wcet = analysis.wcet;
-  const icache = analysis.cache;
-  const dcache = analysis.data_cache;
-  const memory = analysis.data_memory;
-  const branch = analysis.branch_prediction;
+  const model = record(analysis?.model) ?? {};
+  const profile = record(analysis?.profile) ?? {};
+  const analysisCaveats = Array.isArray(analysis?.caveats) ? analysis!.caveats : [];
+  const wcet = record(analysis?.wcet);
+  const icache = record(analysis?.cache);
+  const dcache = record(analysis?.data_cache);
+  const memory = record(analysis?.data_memory);
+  const branch = record(analysis?.branch_prediction);
   const wcetRoots = Array.isArray(wcet?.roots)
     ? (wcet!.roots as Array<Record<string, unknown>>)
     : [];
-  const extras = record(profile);
+  const extras = profile;
   const profileId = str(extras?.board_profile_id) || "no board profile";
   const profileSha = str(extras?.board_profile_sha256);
   const profileSource = str(extras?.board_profile_source);
@@ -188,7 +191,7 @@ export function BinaryAnalysisView({
         "",
       );
     }
-    lines.push("## Caveats", "", ...analysis.caveats.map((caveat) => `- ${caveat}`), "");
+    lines.push("## Caveats", "", ...analysisCaveats.map((caveat) => `- ${caveat}`), "");
     return lines.join("\n");
   };
 
@@ -281,6 +284,7 @@ export function BinaryAnalysisView({
                   <th align="right">cycles</th>
                   <th align="right">time (ns)</th>
                   <th align="right">path</th>
+                  <th align="right">walk</th>
                 </tr>
               </thead>
               <tbody>
@@ -293,6 +297,22 @@ export function BinaryAnalysisView({
                     <td align="right">{fmtNumber(root.time_ns, 1)}</td>
                     <td align="right">
                       {Array.isArray(root.path) ? root.path.length : "—"}
+                    </td>
+                    <td align="right">
+                      {Array.isArray(root.path) && root.path.length > 0 ? (
+                        <button
+                          className="btn small"
+                          onClick={() => {
+                            const selector =
+                              str(root.name) || str(root.function).replace(/^fn:/, "");
+                            onOpenPath(selector, root.path as string[]);
+                          }}
+                        >
+                          CFG
+                        </button>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   </tr>
                 ))}
