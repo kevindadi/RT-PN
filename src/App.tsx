@@ -1285,8 +1285,60 @@ export default function App() {
         ? analysis?.docs?.workflow ?? "SPEC-FIRST"
         : "NO WORKFLOW";
 
+  if (workflow === "none" || hub) {
+    return (
+      <div className="chooser">
+        <header className="chooser-header">
+          <div className="brand">
+            <div className="brand-mark">
+              <svg viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M16 2 28 9v14l-12 7L4 23V9z" />
+                <circle cx="16" cy="9" r="2.3" />
+                <circle cx="10" cy="21" r="2.3" />
+                <circle cx="22" cy="21" r="2.3" />
+                <path d="M16 11.3 11 19M16 11.3 21 19M11.8 21h8.4" />
+              </svg>
+            </div>
+            <div>
+              <div className="brand-name">RT-PN</div>
+              <div className="brand-sub">REAL-TIME PETRI WORKBENCH</div>
+            </div>
+          </div>
+          <div className="chooser-engines">
+            <span className="engine-label" title={cli?.path ?? undefined}>
+              <Cpu size={11} />
+              <span>
+                {cli
+                  ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""}`
+                  : "PTPN NOT FOUND · just engines"}
+              </span>
+            </span>
+            <span className="engine-label" title={elf2tdg?.path ?? undefined}>
+              <Binary size={11} />
+              <span>
+                {elf2tdg
+                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""}`
+                  : "ELF2TDG NOT FOUND · just engines"}
+              </span>
+            </span>
+          </div>
+        </header>
+        <Hub
+          onSpec={() => void openSpecDialog()}
+          onBinary={() => void openBinaryDialog()}
+          onSpecExample={() => void openExample()}
+          onBinaryExample={() => void openElfExample()}
+        />
+        <footer className="chooser-foot">
+          Two independent workspaces · scheduling analysis and binary analysis never share
+          stages or configuration.
+        </footer>
+      </div>
+    );
+  }
+
   return (
-    <div className="app">
+    <div className={`app ${isBinary ? "mode-binary" : "mode-spec"}`}>
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark">
@@ -1664,8 +1716,10 @@ export default function App() {
             </>
           )}
 
-          <div className="divider" />
-          <Section title="RUN HISTORY" />
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="RUN HISTORY" />
           {history.length === 0 ? (
             <div className="faint">no runs in this session</div>
           ) : (
@@ -1725,6 +1779,8 @@ export default function App() {
               tone="warn"
             />
           </div>
+            </>
+          )}
 
           <div className="sidebar-bottom">
             <div className="engine-label" title={cli?.path ?? undefined}>
@@ -1749,15 +1805,7 @@ export default function App() {
       </aside>
 
       <main className="workspace">
-        {hub || workflow === "none" ? (
-          <Hub
-            onSpec={() => void openSpecDialog()}
-            onBinary={() => void openBinaryDialog()}
-            onSpecExample={() => void openExample()}
-            onBinaryExample={() => void openElfExample()}
-          />
-        ) : (
-          <>
+        <>
             <div className="stage-tabs">
               {stages.map((stage) => (
                 <button
@@ -1845,8 +1893,7 @@ export default function App() {
                 </div>
               )}
             </div>
-          </>
-        )}
+        </>
       </main>
 
       <aside className="inspector">
@@ -1863,8 +1910,10 @@ export default function App() {
           <Section title="DETAILS" />
           <div className="detail-title">{detail.title}</div>
           <div className="detail-body">{detail.body}</div>
-          <div className="divider" />
-          <Section title="RESOURCE BUDGET" />
+          {!isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="RESOURCE BUDGET" />
           <div
             style={{
               display: "grid",
@@ -1917,6 +1966,8 @@ export default function App() {
             <button className="btn wide bad" onClick={() => void cancelRun()}>
               CANCEL RUN · {Math.round(liveElapsed / 1000)}s
             </button>
+          )}
+            </>
           )}
 
           <div className="divider" />

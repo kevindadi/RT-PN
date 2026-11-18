@@ -2520,6 +2520,75 @@ textarea {
   }
 }
 
+/* ---------- standalone workflow chooser ---------- */
+
+.chooser {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1100px 540px at 18% -12%, rgba(79, 163, 255, 0.12), transparent 60%),
+    radial-gradient(900px 480px at 100% 8%, rgba(150, 120, 255, 0.1), transparent 55%),
+    #060d18;
+}
+
+.chooser-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 20px 34px 0;
+}
+
+.chooser-engines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+
+.chooser-foot {
+  margin-top: auto;
+  padding: 22px 34px 26px;
+  text-align: center;
+  color: #566f8a;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+.chooser .hub {
+  flex: 1;
+  padding-top: 28px;
+}
+
+.chooser .hub-head h1 {
+  font-size: 30px;
+}
+
+/* mode accents keep the two workspaces visually distinguishable */
+
+.app.mode-binary .brand-mark svg path,
+.app.mode-binary .brand-mark svg circle {
+  fill: #b49bff;
+}
+
+.app.mode-spec .brand-mark svg path,
+.app.mode-spec .brand-mark svg circle {
+  fill: #4fa3ff;
+}
+
+.app.mode-binary .stage-tab.active {
+  color: #d9ccff;
+  border-color: #8f7bff;
+}
+
+.app.mode-binary .btn.primary,
+.app.mode-binary .btn.violet {
+  border-color: #8f7bff;
+  color: #efeaff;
+}
+
 
 
 
