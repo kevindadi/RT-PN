@@ -43,6 +43,7 @@ import {
   pickProject,
   pickSpecification,
   readTextFile,
+  workspaceDeleteProject,
   workspaceOpenProject,
   workspaceRecent,
   workspaceSaveProject,
@@ -1584,30 +1585,58 @@ export default function App() {
             </div>
             <div className="chooser-recent-list">
               {workspaceProjects.map((project) => (
-                <button
-                  key={project.id}
-                  className="project-card"
-                  onClick={() => void openWorkspaceProject(project.id)}
-                  title={project.elf_path ?? ""}
-                >
-                  <b>{project.name}</b>
-                  <small>
-                    {project.arch || "—"} · {project.functions ?? "?"} functions ·{" "}
-                    {project.profile || "no board profile"}
-                  </small>
-                  <span className="mono faint">
-                    {project.latest_wcet_root
-                      ? `WCET ${project.latest_wcet_root} · ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
-                      : "no WCET result in the last run"}
-                  </span>
-                </button>
+                <div className="project-card-wrap" key={project.id}>
+                  <button
+                    className="project-card"
+                    onClick={() => void openWorkspaceProject(project.id)}
+                    title={project.elf_path ?? ""}
+                  >
+                    <b>{project.name}</b>
+                    <small>
+                      {project.arch || "—"} · {project.functions ?? "?"} functions ·{" "}
+                      {project.profile || "no board profile"}
+                    </small>
+                    <span className="mono faint">
+                      {project.latest_wcet_root
+                        ? `WCET ${project.latest_wcet_root} · ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
+                        : "no WCET result in the last run"}
+                      {project.last_opened
+                        ? ` · opened ${new Date(project.last_opened * 1000).toLocaleDateString()}`
+                        : ""}
+                    </span>
+                  </button>
+                  <button
+                    className="project-delete"
+                    title="remove this cached project (your ELF is kept)"
+                    onClick={async (event) => {
+                      event.stopPropagation();
+                      if (
+                        !window.confirm(
+                          `Remove "${project.name}" from the workspace?\n\nThe cached text results are deleted; your ELF file stays untouched.`,
+                        )
+                      ) {
+                        return;
+                      }
+                      try {
+                        await workspaceDeleteProject(project.id);
+                        setWorkspaceProjects((previous) =>
+                          previous.filter((item) => item.id !== project.id),
+                        );
+                      } catch (reason) {
+                        setError(String(reason));
+                      }
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           </section>
         )}
 
         <footer className="chooser-foot">
-          RT-PN 0.3.0 · SQLite workspace · Two independent workspaces.
+          RT-PN 0.3.1 · SQLite workspace · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -2733,6 +2762,7 @@ function Hub({
     </div>
   );
 }
+
 
 
 

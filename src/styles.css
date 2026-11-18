@@ -2918,6 +2918,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  width: 100%;
   padding: 10px 12px;
   border: 1px solid #17304d;
   border-radius: 8px;
@@ -2926,6 +2927,29 @@ textarea {
   text-align: left;
   cursor: pointer;
   transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.project-card-wrap {
+  position: relative;
+}
+
+.project-delete {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 20px;
+  height: 20px;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  background: rgba(8, 17, 31, 0.92);
+  color: #ff9b9b;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-delete:hover {
+  border-color: #ff7b7b;
 }
 
 .project-card:hover {
