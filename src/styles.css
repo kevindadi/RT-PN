@@ -2821,6 +2821,70 @@ textarea {
   padding-right: 2px;
 }
 
+.config-save {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.config-save .profile-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.config-list {
+  display: grid;
+  gap: 4px;
+}
+
+.config-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.config-apply {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1px solid #1d3350;
+  border-radius: 5px;
+  background: #0a1526;
+  color: #cfe6ff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.config-apply:hover {
+  border-color: #8f7bff;
+}
+
+.config-apply b {
+  font-family: var(--font-mono) !important;
+  font-size: 9.5px;
+  font-weight: 500;
+}
+
+.config-apply small {
+  color: #7c8ca8;
+  font-size: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-del {
+  flex: 0 0 auto;
+  width: 22px;
+  border: 1px solid #1d3350;
+  border-radius: 5px;
+  background: #0a1526;
+  color: #ff9b9b;
+  cursor: pointer;
+}
+
 .bin-nav-row {
   display: flex;
   align-items: baseline;

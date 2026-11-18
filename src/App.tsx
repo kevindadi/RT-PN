@@ -592,6 +592,16 @@ function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+interface BinaryRunConfig {
+  id: string;
+  name: string;
+  cpu?: string;
+  freq?: string;
+  board_profile?: string;
+}
+
+const BINARY_CONFIGS_KEY = "rtpn.binary.configs.v1";
+
 export default function App() {
   const [workflow, setWorkflow] = useState<Workflow>("none");
   const [hub, setHub] = useState(true);
@@ -645,6 +655,23 @@ export default function App() {
   const [cfgError, setCfgError] = useState<string | null>(null);
   const [wcetPath, setWcetPath] = useState<string[] | null>(null);
   const [binaryFunctionQuery, setBinaryFunctionQuery] = useState("");
+  const [configName, setConfigName] = useState("");
+  const [binaryConfigs, setBinaryConfigs] = useState<BinaryRunConfig[]>(() => {
+    try {
+      const stored = localStorage.getItem(BINARY_CONFIGS_KEY);
+      return stored ? (JSON.parse(stored) as BinaryRunConfig[]) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BINARY_CONFIGS_KEY, JSON.stringify(binaryConfigs));
+    } catch {
+      // storage can be unavailable in restricted webviews; configurations are optional
+    }
+  }, [binaryConfigs]);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -1503,7 +1530,7 @@ export default function App() {
           onBinaryExample={() => void openElfExample()}
         />
         <footer className="chooser-foot">
-          RT-PN 0.2.1 · instruction timing & coverage · Two independent workspaces.
+          RT-PN 0.2.2 · named run configurations · Two independent workspaces.
         </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
       </div>
@@ -1743,6 +1770,89 @@ export default function App() {
                   }))
                 }
               />
+              <div className="config-save">
+                <input
+                  className="profile-input"
+                  type="text"
+                  placeholder="named run configuration"
+                  value={configName}
+                  disabled={busy}
+                  onChange={(event) => setConfigName(event.target.value)}
+                />
+                <button
+                  className="btn small accent"
+                  disabled={busy}
+                  onClick={() => {
+                    const name =
+                      configName.trim() ||
+                      [binaryOptions.cpu, binaryOptions.freq]
+                        .filter(Boolean)
+                        .join(" · ") ||
+                      "default";
+                    setBinaryConfigs((previous) => [
+                      ...previous.filter((configuration) => configuration.name !== name),
+                      {
+                        id: `${Date.now()}-${name}`,
+                        name,
+                        cpu: binaryOptions.cpu,
+                        freq: binaryOptions.freq,
+                        board_profile: binaryOptions.board_profile,
+                      },
+                    ]);
+                    setConfigName("");
+                  }}
+                >
+                  SAVE CONFIG
+                </button>
+              </div>
+              {binaryConfigs.length > 0 && (
+                <div className="config-list">
+                  {binaryConfigs.map((configuration) => (
+                    <div key={configuration.id} className="config-row">
+                      <button
+                        className="config-apply"
+                        onClick={() => {
+                          setBinaryOptions({
+                            cpu: configuration.cpu,
+                            freq: configuration.freq,
+                            board_profile: configuration.board_profile,
+                          });
+                          setDetail({
+                            title: "RUN CONFIGURATION",
+                            body:
+                              `${configuration.name}\n` +
+                              `cpu ${configuration.cpu ?? "auto"} · freq ${configuration.freq ?? "default"} · ` +
+                              `profile ${configuration.board_profile ?? "none"}\n\n` +
+                              "Press RUN ANALYSIS in the toolbar to apply it.",
+                          });
+                        }}
+                      >
+                        <b>{configuration.name}</b>
+                        <small>
+                          {[
+                            configuration.cpu,
+                            configuration.freq,
+                            (configuration.board_profile ?? "").split(/[\\/]/).pop(),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </small>
+                      </button>
+                      <button
+                        className="config-del"
+                        title="delete configuration"
+                        onClick={() =>
+                          setBinaryConfigs((previous) =>
+                            previous.filter((item) => item.id !== configuration.id),
+                          )
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="faint">
                 This configuration applies to the next run. Use <b>RUN ANALYSIS</b> in the
                 toolbar to execute; the function index on the left opens CFG documents.
