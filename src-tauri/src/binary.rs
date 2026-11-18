@@ -17,7 +17,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::graph::Graph;
@@ -27,12 +27,21 @@ const FUNCTION_LIMIT: usize = 120;
 const BLOCK_LIMIT: usize = 40;
 const CALL_LIMIT: usize = 12;
 
+/// Analysis options forwarded to the elf2tdg CLI.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct BinaryOptions {
+    pub cpu: Option<String>,
+    pub board_profile: Option<String>,
+    pub freq: Option<String>,
+}
+
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct ElfWorkflow {
     pub elf_path: PathBuf,
     pub file_size: u64,
     pub artifacts_dir: PathBuf,
     pub elf_view: String,
+    pub elf_mermaid: String,
     pub cfg_text: String,
     pub cfg_svg: String,
     pub cfg_graph: Option<Graph>,
@@ -42,6 +51,14 @@ pub struct ElfWorkflow {
     pub diagnostics: usize,
     pub artifacts: Vec<String>,
     pub warnings: Vec<String>,
+    pub schema: String,
+    pub image: Value,
+    pub timing: Value,
+    pub roots: Vec<Value>,
+    pub concurrency: Vec<Value>,
+    pub function_rows: Vec<Value>,
+    pub cfg_diagnostics: Vec<Value>,
+    pub caveats: Vec<String>,
 }
 
 fn rule() -> String {
@@ -437,18 +454,41 @@ fn readable_cfg(cfg: &Value, json_path: &Path, dot_path: &Path, svg_path: Option
     )
 }
 
-fn elf_view_args(input: &Path, output: &Path) -> Vec<String> {
-    vec![
+fn analysis_args(options: &BinaryOptions) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(cpu) = options.cpu.as_deref().filter(|value| !value.is_empty()) {
+        args.push("--cpu".to_string());
+        args.push(cpu.to_string());
+    }
+    if let Some(profile) = options
+        .board_profile
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        args.push("--board-profile".to_string());
+        args.push(profile.to_string());
+    }
+    if let Some(freq) = options.freq.as_deref().filter(|value| !value.is_empty()) {
+        args.push("--freq".to_string());
+        args.push(freq.to_string());
+    }
+    args
+}
+
+fn elf_view_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<String> {
+    let mut args = vec![
         "--view".to_string(),
         "elf".to_string(),
         "--output".to_string(),
         output.display().to_string(),
-        input.display().to_string(),
-    ]
+    ];
+    args.extend(analysis_args(options));
+    args.push(input.display().to_string());
+    args
 }
 
-fn cfg_json_args(input: &Path, output: &Path) -> Vec<String> {
-    vec![
+fn cfg_json_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<String> {
+    let mut args = vec![
         "--view".to_string(),
         "cfg".to_string(),
         "--format".to_string(),
@@ -456,24 +496,28 @@ fn cfg_json_args(input: &Path, output: &Path) -> Vec<String> {
         "--no-cfg-instructions".to_string(),
         "--output".to_string(),
         output.display().to_string(),
-        input.display().to_string(),
-    ]
+    ];
+    args.extend(analysis_args(options));
+    args.push(input.display().to_string());
+    args
 }
 
-fn cfg_dot_args(input: &Path, output: &Path) -> Vec<String> {
-    vec![
+fn cfg_dot_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<String> {
+    let mut args = vec![
         "--view".to_string(),
         "cfg".to_string(),
         "--format".to_string(),
         "dot".to_string(),
         "--output".to_string(),
         output.display().to_string(),
-        input.display().to_string(),
-    ]
+    ];
+    args.extend(analysis_args(options));
+    args.push(input.display().to_string());
+    args
 }
 
 /// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
-pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
+pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, String> {
     let program = resolve_elf2tdg().ok_or_else(|| {
         "elf2tdg CLI not found. Set ELF2TDG_BIN, or build it with `just engines`.".to_string()
     })?;
@@ -489,11 +533,11 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
     let mut warnings = Vec::new();
 
     // 1. Loader view: readable ELF layout (Mermaid source file).
-    run_tool(&program, &elf_view_args(elf, &elf_mmd))?;
+    run_tool(&program, &elf_view_args(elf, &elf_mmd, options))?;
 
     // 2. CFG views: readable JSON plus a DOT rendering source.
-    run_tool(&program, &cfg_json_args(elf, &cfg_json))?;
-    run_tool(&program, &cfg_dot_args(elf, &cfg_dot))?;
+    run_tool(&program, &cfg_json_args(elf, &cfg_json, options))?;
+    run_tool(&program, &cfg_dot_args(elf, &cfg_dot, options))?;
 
     let layout = fs::read_to_string(&elf_mmd)
         .map_err(|error| format!("cannot read {}: {error}", elf_mmd.display()))?;
@@ -550,6 +594,107 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
     let graph = cfg_graph(&cfg);
     let elf_view = elf_view_text(elf, &elf_mmd, &layout);
 
+    let schema = cfg
+        .get("cfg_schema_version")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let image = cfg.get("image").cloned().unwrap_or(Value::Null);
+    let timing = cfg.get("timing").cloned().unwrap_or(Value::Null);
+    let roots = cfg
+        .get("roots")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(64).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let concurrency = cfg
+        .get("concurrency")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(128).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let cfg_diagnostics = cfg
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().take(200).cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    let mut caveats: Vec<String> = Vec::new();
+    if let Some(global) = timing.get("caveats").and_then(Value::as_array) {
+        for caveat in global.iter().filter_map(Value::as_str) {
+            if !caveats.iter().any(|item| item == caveat) {
+                caveats.push(caveat.to_string());
+            }
+        }
+    }
+    if let Some(models) = timing.get("models").and_then(Value::as_array) {
+        for model in models {
+            if let Some(items) = model.get("caveats").and_then(Value::as_array) {
+                for caveat in items.iter().filter_map(Value::as_str) {
+                    if !caveats.iter().any(|item| item == caveat) {
+                        caveats.push(caveat.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let function_rows = cfg
+        .get("functions")
+        .and_then(Value::as_array)
+        .map(|functions| {
+            functions
+                .iter()
+                .take(600)
+                .map(|function| {
+                    let blocks = function
+                        .get("blocks")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    let calls = blocks
+                        .iter()
+                        .map(|block| {
+                            block
+                                .get("calls")
+                                .and_then(Value::as_array)
+                                .map(|items| items.len())
+                                .unwrap_or(0)
+                        })
+                        .sum::<usize>();
+                    let mut cycles_min = f64::INFINITY;
+                    let mut cycles_max = f64::NEG_INFINITY;
+                    for block in &blocks {
+                        if let Some(cycles) = block.get("cycles") {
+                            if let Some(min) = cycles.get("min").and_then(Value::as_f64) {
+                                cycles_min = cycles_min.min(min);
+                            }
+                            if let Some(max) = cycles.get("max").and_then(Value::as_f64) {
+                                cycles_max = cycles_max.max(max);
+                            }
+                        }
+                    }
+                    serde_json::json!({
+                        "id": function.get("id").cloned().unwrap_or(Value::Null),
+                        "name": function.get("primary_name").cloned().unwrap_or(Value::Null),
+                        "demangled_name": function.get("demangled_name").cloned().unwrap_or(Value::Null),
+                        "address": function.get("address").cloned().unwrap_or(Value::Null),
+                        "size": function.get("size").cloned().unwrap_or(Value::Null),
+                        "kind": function.get("kind").cloned().unwrap_or(Value::Null),
+                        "language": function.get("language").cloned().unwrap_or(Value::Null),
+                        "blocks": blocks.len(),
+                        "calls": calls,
+                        "cycles_min": if cycles_min.is_finite() { Value::from(cycles_min) } else { Value::Null },
+                        "cycles_max": if cycles_max.is_finite() { Value::from(cycles_max) } else { Value::Null },
+                        "inline_frames": function
+                            .get("inline_frames")
+                            .and_then(Value::as_array)
+                            .map(|items| items.len())
+                            .unwrap_or(0),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     let artifacts = vec![
         elf_mmd.display().to_string(),
         cfg_json.display().to_string(),
@@ -562,6 +707,7 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
         file_size: fs::metadata(elf).map(|metadata| metadata.len()).unwrap_or(0),
         artifacts_dir: directory,
         elf_view,
+        elf_mermaid: layout,
         cfg_text,
         cfg_svg: rendered.unwrap_or_default(),
         cfg_graph: graph,
@@ -571,6 +717,14 @@ pub fn analyze(elf: &Path) -> Result<ElfWorkflow, String> {
         diagnostics: stats.diagnostics,
         artifacts,
         warnings,
+        schema,
+        image,
+        timing,
+        roots,
+        concurrency,
+        function_rows,
+        cfg_diagnostics,
+        caveats,
     })
 }
 
@@ -600,16 +754,36 @@ mod tests {
     #[test]
     fn commands_pass_the_elf_input() {
         let input = Path::new("fw.elf");
+        let options = BinaryOptions::default();
         let cases = [
-            elf_view_args(input, Path::new("art/fw.elf.mmd")),
-            cfg_json_args(input, Path::new("art/fw.cfg.json")),
-            cfg_dot_args(input, Path::new("art/fw.cfg.dot")),
+            elf_view_args(input, Path::new("art/fw.elf.mmd"), &options),
+            cfg_json_args(input, Path::new("art/fw.cfg.json"), &options),
+            cfg_dot_args(input, Path::new("art/fw.cfg.dot"), &options),
         ];
         for args in cases {
             assert_eq!(args.last().map(String::as_str), Some("fw.elf"));
             assert!(args.iter().any(|arg| arg == "--view"));
             assert!(args.iter().any(|arg| arg == "--output"));
         }
+    }
+
+    #[test]
+    fn commands_forward_the_analysis_profile() {
+        let input = Path::new("fw.elf");
+        let options = BinaryOptions {
+            cpu: Some("cortex-m4".to_string()),
+            board_profile: Some("board.toml".to_string()),
+            freq: Some("168MHz".to_string()),
+        };
+        let args = cfg_json_args(input, Path::new("art/fw.cfg.json"), &options);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--cpu" && pair[1] == "cortex-m4"));
+        assert!(args.windows(2).any(|pair| pair[0] == "--board-profile"
+            && pair[1] == "board.toml"));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair[0] == "--freq" && pair[1] == "168MHz"));
     }
 
     #[test]
@@ -629,7 +803,8 @@ mod tests {
         }
         std::env::set_var("ELF2TDG_BIN", &program);
         let workflow = with_temp_artifacts(|| {
-            let workflow = analyze(&fixture).expect("ELF workflow must succeed");
+            let workflow =
+                analyze(&fixture, &BinaryOptions::default()).expect("ELF workflow must succeed");
             // The scratch directory is removed after the closure returns, so
             // check the on-disk artifacts here.
             assert!(workflow.artifacts_dir.is_dir());
@@ -642,7 +817,10 @@ mod tests {
             workflow
         });
         assert!(workflow.elf_view.contains("flowchart"));
+        assert!(workflow.elf_mermaid.contains("flowchart"));
+        assert!(!workflow.schema.is_empty(), "CFG schema must be reported");
         assert!(workflow.functions > 0, "CFG must contain functions");
+        assert!(!workflow.function_rows.is_empty());
         assert!(!workflow.cfg_text.is_empty());
     }
 

@@ -138,11 +138,38 @@ export interface SweepEntry {
   error: string;
 }
 
+export interface BinaryFunctionRow {
+  id: string | null;
+  name: string | null;
+  demangled_name: string | null;
+  address: string | null;
+  size: number | null;
+  kind: string | null;
+  language: string | null;
+  blocks: number;
+  calls: number;
+  cycles_min: number | null;
+  cycles_max: number | null;
+  inline_frames: number;
+}
+
+export interface BinaryOptions {
+  cpu?: string;
+  board_profile?: string;
+  freq?: string;
+}
+
+export interface BinaryProfile {
+  name: string;
+  path: string;
+}
+
 export interface ElfWorkflow {
   elf_path: string;
   file_size: number;
   artifacts_dir: string;
   elf_view: string;
+  elf_mermaid: string;
   cfg_text: string;
   cfg_svg: string;
   cfg_graph: Graph | null;
@@ -152,6 +179,14 @@ export interface ElfWorkflow {
   diagnostics: number;
   artifacts: string[];
   warnings: string[];
+  schema: string;
+  image: Record<string, unknown>;
+  timing: Record<string, unknown>;
+  roots: Array<Record<string, unknown>>;
+  concurrency: Array<Record<string, unknown>>;
+  function_rows: BinaryFunctionRow[];
+  cfg_diagnostics: Array<Record<string, unknown>>;
+  caveats: string[];
 }
 
 export interface EngineInfo {
@@ -189,5 +224,7 @@ export type Stage =
   | "replay"
   | "timeline"
   | "report"
+  | "overview"
   | "elf"
+  | "functions"
   | "cfg";

@@ -2583,10 +2583,229 @@ textarea {
   border-color: #8f7bff;
 }
 
-.app.mode-binary .btn.primary,
-.app.mode-binary .btn.violet {
+.profile-input {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  background: #0b1422;
+  color: #dce8f5;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.profile-input:focus {
+  outline: 1px solid #8f7bff;
   border-color: #8f7bff;
-  color: #efeaff;
+}
+
+/* ---------- binary workspace stages ---------- */
+
+.bin-overview,
+.bin-functions {
+  height: 100%;
+  overflow: auto;
+  padding: 22px 26px 34px;
+  background:
+    radial-gradient(900px 420px at 15% -10%, rgba(143, 123, 255, 0.08), transparent 60%);
+}
+
+.bin-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.bin-card {
+  padding: 16px 18px;
+  border: 1px solid #17304d;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(16, 26, 48, 0.96), rgba(9, 18, 32, 0.96));
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.25);
+  animation: sem-rise 420ms ease-out both;
+}
+
+.bin-card-wide {
+  margin-bottom: 14px;
+}
+
+.bin-card-title {
+  margin: 5px 0 10px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  color: #e8e2ff;
+  word-break: break-word;
+}
+
+.bin-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+
+.bin-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.bin-facts span {
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #6f8299;
+}
+
+.bin-facts b {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #cfe6ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.bin-stat-grid span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bin-stat-grid b {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: #d9ccff;
+}
+
+.bin-stat-grid small {
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #6f8299;
+}
+
+.bin-caveats {
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid #5c4a1d;
+  border-left: 3px solid #f2c14e;
+  border-radius: 8px;
+  background: rgba(92, 74, 29, 0.14);
+  animation: sem-rise 460ms ease-out both;
+}
+
+.bin-caveats ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: #d9cfa6;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.bin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 10.5px;
+}
+
+.bin-table th {
+  padding: 4px 6px;
+  border-bottom: 1px solid #1d3350;
+  color: #7c8ca8;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.bin-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #11243b;
+  color: #b9d3ec;
+  vertical-align: top;
+}
+
+.bin-table tbody tr:hover {
+  background: rgba(143, 123, 255, 0.06);
+}
+
+.bin-name {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: #e0d8ff;
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bin-table-wide .bin-name {
+  max-width: 640px;
+}
+
+.bin-row-button {
+  cursor: pointer;
+}
+
+.bin-functions .faint,
+.bin-overview .faint {
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.bin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.bin-toolbar input,
+.bin-toolbar select {
+  padding: 5px 8px;
+  background: #0b1422;
+  color: #dce8f5;
+  border: 1px solid #1d3350;
+  border-radius: 4px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.bin-toolbar input {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.bin-toolbar input:focus,
+.bin-toolbar select:focus {
+  outline: 1px solid #8f7bff;
+  border-color: #8f7bff;
+}
+
+.bin-mermaid {
+  height: 100%;
+  overflow: auto;
+  padding: 18px 24px;
+}
+
+.bin-mermaid .mmd {
+  min-height: 200px;
 }
 
 /* ---------- compact analysis sidebar ---------- */

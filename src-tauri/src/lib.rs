@@ -541,19 +541,11 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|error| format!("cannot read {path}: {error}"))
 }
 
-/// Directory that holds the packaged examples (`examples/ptpn`, `examples/elf2tdg`).
-///
-/// Resolution order: `PTPN_EXAMPLES_DIR`, the repository checkout (debug builds
-/// and installed dev builds), next to the executable (portable layout), then the
-/// working directory. A candidate is only accepted when it actually contains the
-/// `ptpn` and `elf2tdg` trees — Cargo itself creates `target/debug/examples`, so
-/// an existence check on `examples/` alone is not enough.
-#[tauri::command]
-fn example_base() -> Result<String, String> {
-    fn is_examples_dir(path: &std::path::Path) -> bool {
-        path.join("ptpn").is_dir() && path.join("elf2tdg").is_dir()
-    }
+fn is_examples_dir(path: &std::path::Path) -> bool {
+    path.join("ptpn").is_dir() && path.join("elf2tdg").is_dir()
+}
 
+fn examples_directory() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Ok(value) = std::env::var("PTPN_EXAMPLES_DIR") {
         candidates.push(PathBuf::from(value));
@@ -571,22 +563,63 @@ fn example_base() -> Result<String, String> {
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("examples"));
     }
-    for candidate in candidates {
-        if is_examples_dir(&candidate) {
-            let resolved = candidate.canonicalize().unwrap_or(candidate);
-            let mut text = resolved.display().to_string();
-            if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-                text = format!(r"\\{rest}");
-            } else if let Some(rest) = text.strip_prefix(r"\\?\") {
-                text = rest.to_string();
+    candidates.into_iter().find(|candidate| is_examples_dir(candidate))
+}
+
+/// Directory that holds the packaged examples (`examples/ptpn`, `examples/elf2tdg`).
+///
+/// Resolution order: `PTPN_EXAMPLES_DIR`, the repository checkout (debug builds
+/// and installed dev builds), next to the executable (portable layout), then the
+/// working directory. A candidate is only accepted when it actually contains the
+/// `ptpn` and `elf2tdg` trees — Cargo itself creates `target/debug/examples`, so
+/// an existence check on `examples/` alone is not enough.
+#[tauri::command]
+fn example_base() -> Result<String, String> {
+    let candidate = examples_directory().ok_or_else(|| {
+        "examples directory not found (expected examples/ptpn and examples/elf2tdg)".to_string()
+    })?;
+    let resolved = candidate.canonicalize().unwrap_or(candidate);
+    let mut text = resolved.display().to_string();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        text = format!(r"\\{rest}");
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        text = rest.to_string();
+    }
+    Ok(text)
+}
+
+#[derive(Serialize)]
+struct BinaryProfile {
+    name: String,
+    path: String,
+}
+
+/// Board timing profiles shipped with the binary workflow example tree.
+#[tauri::command]
+fn binary_profiles() -> Result<Vec<BinaryProfile>, String> {
+    let base = examples_directory()
+        .ok_or_else(|| "examples directory not found; cannot list board profiles".to_string())?;
+    let directory = base.join("elf2tdg").join("profiles");
+    let mut profiles = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&directory) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) != Some("toml") {
+                continue;
             }
-            return Ok(text);
+            let name = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("profile")
+                .to_string();
+            profiles.push(BinaryProfile {
+                name,
+                path: path.display().to_string(),
+            });
         }
     }
-    Err(
-        "examples directory not found (expected examples/ptpn and examples/elf2tdg)"
-            .to_string(),
-    )
+    profiles.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(profiles)
 }
 
 /// `ptpn describe`: the analyzer's own restatement of the effective scheduling
@@ -729,13 +762,16 @@ async fn analyze_model(
 }
 
 #[tauri::command]
-async fn analyze_elf(path: String) -> Result<ElfWorkflow, String> {
+async fn analyze_elf(
+    path: String,
+    options: Option<binary::BinaryOptions>,
+) -> Result<ElfWorkflow, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let elf = PathBuf::from(&path);
         if !elf.is_file() {
             return Err(format!("ELF not found: {}", elf.display()));
         }
-        binary::analyze(&elf)
+        binary::analyze(&elf, &options.unwrap_or_default())
     })
     .await
     .map_err(|error| format!("ELF worker failed: {error}"))?
@@ -851,6 +887,7 @@ pub fn run() {
             allocate_cores,
             analyze_model,
             analyze_elf,
+            binary_profiles,
             cancel_analysis,
             describe_model,
             engine_health,

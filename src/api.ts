@@ -5,6 +5,8 @@ import type {
   AllocationReport,
   AnalysisOptions,
   AnalysisPayload,
+  BinaryOptions,
+  BinaryProfile,
   ElfWorkflow,
   EngineHealth,
   EngineInfo,
@@ -116,8 +118,13 @@ export async function pickProject(): Promise<string | null> {
 }
 
 /** Runs the ELF -> readable ELF -> CFG (+ preview image) workflow. */
-export function analyzeElf(path: string): Promise<ElfWorkflow> {
-  return invoke<ElfWorkflow>("analyze_elf", { path });
+export function analyzeElf(path: string, options?: BinaryOptions): Promise<ElfWorkflow> {
+  return invoke<ElfWorkflow>("analyze_elf", { path, options: options ?? null });
+}
+
+/** Board timing profiles shipped with the binary example tree. */
+export function binaryProfiles(): Promise<BinaryProfile[]> {
+  return invoke<BinaryProfile[]>("binary_profiles");
 }
 
 export function resolveCliPath(): Promise<EngineInfo | null> {

@@ -31,6 +31,7 @@ import {
   allocateCores,
   analyzeElf,
   analyzeModel,
+  binaryProfiles,
   cancelAnalysis,
   describeModel,
   engineHealth,
@@ -43,8 +44,10 @@ import {
   readTextFile,
   writeTextFile,
 } from "./api";
+import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
+import { Mermaid } from "./Mermaid";
 import { ScgReplay } from "./Replay";
 import { ReplayCompare, type CompareLane } from "./ReplayCompare";
 import { stepsFor } from "./replayModel";
@@ -63,6 +66,9 @@ import type {
   TraceStep,
   Workflow,
   WorkbenchDocs,
+  BinaryFunctionRow,
+  BinaryOptions,
+  BinaryProfile,
 } from "./types";
 
 const STAGES: Record<
@@ -114,7 +120,19 @@ const STAGES: Record<
   elf: {
     label: "ELF",
     title: "ELF LAYOUT",
-    subtitle: "Readable ELF loader view produced by elf2tdg",
+    subtitle: "Readable ELF loader view rendered from Mermaid",
+    previewable: false,
+  },
+  overview: {
+    label: "OVERVIEW",
+    title: "BINARY OVERVIEW",
+    subtitle: "Image, timing model, roots and hot functions of the CFG",
+    previewable: false,
+  },
+  functions: {
+    label: "FUNCTIONS",
+    title: "FUNCTION INDEX",
+    subtitle: "Searchable functions with block/call/cycle metadata",
     previewable: false,
   },
   cfg: {
@@ -475,7 +493,7 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
 
 function stagesFor(workflow: Workflow): Stage[] {
   return workflow === "binary"
-    ? ["elf", "cfg"]
+    ? ["overview", "elf", "functions", "cfg"]
     : ["dag", "ptpn", "semantics", "state", "replay", "timeline", "report"];
 }
 
@@ -587,6 +605,8 @@ export default function App() {
   const [sweep, setSweep] = useState<SweepEntry[]>([]);
   const [sweepBusy, setSweepBusy] = useState(false);
   const [sweepProgress, setSweepProgress] = useState({ done: 0, total: 0 });
+  const [binaryOptions, setBinaryOptions] = useState<BinaryOptions>({});
+  const [profiles, setProfiles] = useState<BinaryProfile[]>([]);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -604,9 +624,13 @@ export default function App() {
     ? binaryDoc(activeStage, binary)
     : stageDoc(activeStage, analysis?.docs);
   const binarySummary = binary
-    ? activeStage === "elf"
-      ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
-      : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
+    ? activeStage === "overview"
+      ? `${binary.schema || "cfg"} · ${binary.functions} fns · ${binary.roots.length} roots`
+      : activeStage === "functions"
+        ? `${binary.function_rows.length} functions · click a row to open the CFG`
+        : activeStage === "elf"
+          ? `${(binary.file_size / 1024).toFixed(1)} KB · ${binary.artifacts_dir}`
+          : `${binary.functions} fns · ${binary.blocks} blocks · ${binary.calls} calls · ${binary.diagnostics} diagnostics`
     : "";
   const summary = isBinary ? binarySummary : stageSummary(activeStage, analysis?.docs);
   const assumptions = isBinary
@@ -618,6 +642,13 @@ export default function App() {
   const deadlockCount = metrics.deadlock_states?.length ?? 0;
   const taskMetrics = metrics.tasks ?? [];
   const policyInfo = policyById(policy);
+
+  useEffect(() => {
+    if (workflow !== "binary") return;
+    void binaryProfiles()
+      .then((items) => setProfiles(items))
+      .catch(() => setProfiles([]));
+  }, [workflow]);
 
   const openDeadlockPreview = () => {
     if (!analysis?.deadlock_graph) return;
@@ -1007,10 +1038,10 @@ export default function App() {
       setWindowTitle(fileName(path));
       if (newProject) setHistory([]);
       try {
-        const payload = await analyzeElf(path);
+        const payload = await analyzeElf(path, binaryOptions);
         setBinary(payload);
         setBusy(false);
-        setActiveStage("elf");
+        setActiveStage("overview");
         setStatus({ text: "ELF READY", tone: "violet" });
         const warningBlock =
           payload.warnings.length > 0
@@ -1035,7 +1066,7 @@ export default function App() {
         setDetail({ title: "IMPORT FAILED", body: String(reason) });
       }
     },
-    [appendHistory],
+    [appendHistory, binaryOptions],
   );
 
   const cancelRun = useCallback(async () => {
@@ -1360,18 +1391,25 @@ export default function App() {
           <FileCode2 size={13} />
           <span>{displayName}</span>
         </div>
-        <div className="topbar-actions">
+          <div className="topbar-actions">
           <StatusPill status={status} />
           <button
             className="btn primary"
-            disabled={workflow !== "spec" || !currentPath || busy}
-            onClick={() => currentPath && void runSpec(currentPath, false)}
+            disabled={!currentPath || busy}
+            onClick={() => {
+              if (!currentPath) return;
+              if (isBinary) void runBinary(currentPath, false);
+              else void runSpec(currentPath, false);
+            }}
           >
             {busy ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
-            {isBinary ? "PENDING" : busy ? "ANALYZING" : "RUN ANALYSIS"}
+            {busy ? "ANALYZING" : "RUN ANALYSIS"}
           </button>
-          <button className="btn" onClick={() => void openSpecDialog()}>
-            <FolderOpen size={13} /> OPEN
+          <button
+            className="btn"
+            onClick={() => (isBinary ? void openBinaryDialog() : void openSpecDialog())}
+          >
+            <FolderOpen size={13} /> {isBinary ? "IMPORT" : "OPEN"}
           </button>
         </div>
       </header>
@@ -1455,6 +1493,77 @@ export default function App() {
               </>
             )}
           </div>
+
+          {isBinary && (
+            <>
+              <div className="divider" />
+              <Section title="ANALYSIS PROFILE" />
+              <select
+                className="policy-select"
+                value={binaryOptions.cpu ?? ""}
+                disabled={busy}
+                onChange={(event) =>
+                  setBinaryOptions((previous) => ({
+                    ...previous,
+                    cpu: event.target.value || undefined,
+                  }))
+                }
+              >
+                <option value="">cpu · auto-detect</option>
+                {["cortex-m4", "cortex-m7", "cortex-m33", "riscv32", "aarch64", "x86-64"].map(
+                  (cpu) => (
+                    <option key={cpu} value={cpu}>
+                      {cpu}
+                    </option>
+                  ),
+                )}
+              </select>
+              <select
+                className="policy-select"
+                value={binaryOptions.board_profile ?? ""}
+                disabled={busy}
+                onChange={(event) =>
+                  setBinaryOptions((previous) => ({
+                    ...previous,
+                    board_profile: event.target.value || undefined,
+                  }))
+                }
+              >
+                <option value="">board profile · none</option>
+                {profiles.map((profile) => (
+                  <option key={profile.path} value={profile.path}>
+                    {profile.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="profile-input"
+                type="text"
+                placeholder="frequency · e.g. 168MHz"
+                value={binaryOptions.freq ?? ""}
+                disabled={busy}
+                onChange={(event) =>
+                  setBinaryOptions((previous) => ({
+                    ...previous,
+                    freq: event.target.value || undefined,
+                  }))
+                }
+              />
+              <div className="stack">
+                <button
+                  className="btn wide accent"
+                  disabled={!currentPath || busy}
+                  onClick={() => currentPath && void runBinary(currentPath, false)}
+                >
+                  <Play size={13} /> {busy ? "ANALYZING" : "RUN WITH PROFILE"}
+                </button>
+              </div>
+              <div className="faint">
+                CPU and board profile select the timing model (caches, branch predictor,
+                memory wait states, WCET). Changes apply on the next run.
+              </div>
+            </>
+          )}
 
           {!isBinary && (
             <>
@@ -1571,26 +1680,28 @@ export default function App() {
           <Section title="ARTIFACTS" />
           {isBinary ? (
             <div className="artifact-list">
+              <Artifact label="SCHEMA" value={binary?.schema || "—"} />
               <Artifact
-                label="ELF"
-                value={binary ? `${Math.round(binary.file_size / 1024)} KB` : "—"}
-              />
-              <Artifact
-                label="CFG"
+                label="FN"
                 value={
                   binary
-                    ? `${binary.functions} FN · ${binary.blocks} BB · ${binary.calls} CALLS`
+                    ? `${binary.functions} · ${binary.blocks} BB · ${binary.calls} calls`
                     : "—"
                 }
+              />
+              <Artifact
+                label="ROOTS"
+                value={binary ? `${binary.roots.length} · ${binary.concurrency.length} spawns` : "—"}
+              />
+              <Artifact
+                label="DIAG"
+                value={binary ? String(binary.diagnostics) : "—"}
               />
               <Artifact
                 label="IMG"
                 value={binary ? (binary.cfg_svg ? "Graphviz SVG" : "graph fallback") : "—"}
               />
-              <Artifact
-                label="ART"
-                value={binary ? binary.artifacts_dir : "—"}
-              />
+              <Artifact label="ART" value={binary ? binary.artifacts_dir : "—"} />
             </div>
           ) : analysis?.result.ok ? (
             <div className="artifact-list">
@@ -1853,7 +1964,31 @@ export default function App() {
                 </div>
               </div>
               <div className="stage-rule" />
-              {activeStage === "semantics" && !isBinary ? (
+              {activeStage === "overview" && isBinary && binary ? (
+                <BinaryOverview binary={binary} />
+              ) : activeStage === "elf" && isBinary && binary ? (
+                binary.elf_mermaid ? (
+                  <div className="bin-mermaid">
+                    <Mermaid chart={binary.elf_mermaid} />
+                  </div>
+                ) : (
+                  <CodeStage doc={binary.elf_view} stageKey="binary-elf" />
+                )
+              ) : activeStage === "functions" && isBinary && binary ? (
+                <BinaryFunctions
+                  binary={binary}
+                  onSelect={(row) => {
+                    setActiveStage("cfg");
+                    setDetail({
+                      title: "SELECTED FUNCTION",
+                      body:
+                        `${row.name ?? "—"}\n` +
+                        `${row.address ?? "—"} · ${row.kind ?? "?"} · ${row.size ?? "?"} bytes\n` +
+                        `${row.blocks} blocks · ${row.calls} calls · max ${row.cycles_max ?? "?"} cycles`,
+                    });
+                  }}
+                />
+              ) : activeStage === "semantics" && !isBinary ? (
                 <SemanticsStage
                   policy={policyInfo}
                   tie={tie}
