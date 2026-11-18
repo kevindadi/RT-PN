@@ -134,14 +134,19 @@ arbitrary`). The supported policies are `fixed`, `fixed_prior_with_resume`,
 `llf`; the selected id is carried through the run details, status bar, exported
 reports and `.rtpn` runs.
 
-The new `SEMANTICS` stage documents the selected policy formally:
+The new `SEMANTICS` stage documents the selected policy formally with three
+layers:
 
-- the state-class definition `S = (M, Z, E_struct, E_pri, Susp)` and the
-  policy-specific clock set / extra state components (release clocks for
-  EDF/FIFO, laxity clocks for LLF, lock ownership or system ceiling for
-  PIP/PCP/SRP);
-- the time-elapse, priority-filter (`E_pri`) and firing rules, plus the
-  preemption/lock and restriction notes;
+- **Mermaid diagrams**: a state-class diagram (`S = (M, Z, E_struct, E_pri,
+  Susp)` plus the policy-specific clock set / extra state components — release
+  clocks for EDF/FIFO, laxity clocks for LLF, lock ownership or system ceiling
+  for PIP/PCP/SRP) and a firing-semantics flow (time elapse → structural
+  enabling → `E_pri` filter → fire → canonicalize) with the policy's selection
+  rule highlighted. Mermaid is bundled locally (lazy-loaded chunk) and rendered
+  with a clean sans-serif dark theme, so the stage works offline;
+- **policy notes** below the diagrams: the time-elapse, priority-filter and
+  firing rules, preemption/lock/clock behaviour and the engine's documented
+  restrictions;
 - a live animated firing-rule diagram (elapse → enabling → filter → fire →
   canonicalize) rendered with the policy's selection rule;
 - `RUN SWEEP`: analyzes the loaded model once per policy with the current tie
