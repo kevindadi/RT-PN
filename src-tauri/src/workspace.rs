@@ -315,15 +315,14 @@ pub fn open_project(id: &str) -> Result<Value, String> {
 
 pub fn open_run(id: &str, run_id: &str) -> Result<Value, String> {
     let connection = database()?;
-    let (directory, elf_path, options) = connection
+    let (directory, elf_path) = connection
         .query_row(
-            "SELECT dir, elf_path, options FROM projects WHERE id = ?1",
+            "SELECT dir, elf_path FROM projects WHERE id = ?1",
             [id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
                 ))
             },
         )
@@ -335,12 +334,15 @@ pub fn open_run(id: &str, run_id: &str) -> Result<Value, String> {
         .map_err(|error| format!("cannot read run {}: {error}", path.display()))?;
     let document: Value =
         serde_json::from_slice(&bytes).map_err(|error| format!("invalid run: {error}"))?;
-    let payload = document.get("payload").cloned().unwrap_or(Value::Null);
+    let payload = document
+        .get("payload")
+        .filter(|payload| payload.is_object())
+        .ok_or_else(|| format!("run {run_id} has no analysis payload"))?;
     Ok(json!({
         "project": {
             "id": id,
             "elf_path": elf_path,
-            "options": options.and_then(|value| serde_json::from_str::<Value>(&value).ok()),
+            "options": document.get("options"),
         },
         "payload": payload,
     }))

@@ -174,11 +174,13 @@ export function binaryFunction(
   path: string,
   selector: string,
   options?: BinaryOptions,
+  runArtifact?: string,
 ): Promise<BinaryFunctionCfg> {
   return invoke<BinaryFunctionCfg>("binary_function", {
     path,
     selector,
     options: options ?? null,
+    runArtifact: runArtifact ?? null,
   });
 }
 

@@ -116,7 +116,7 @@ fn coverage(cfg: &Value, timing: &Value) -> BinaryCoverage {
         .and_then(|model| model.get("params"))
         .and_then(|params| params.get("extras"))
         .and_then(|extras| extras.get("unknown_instruction_mnemonics"))
-        .and_then(Value::as_u64)
+        .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse().ok()))
         .unwrap_or(0) as usize;
     BinaryCoverage {
         total_instructions: total,
@@ -615,7 +615,6 @@ fn cfg_json_args(input: &Path, output: &Path, options: &BinaryOptions) -> Vec<St
         "cfg".to_string(),
         "--format".to_string(),
         "json".to_string(),
-        "--no-cfg-instructions".to_string(),
         "--output".to_string(),
         output.display().to_string(),
     ];
@@ -744,6 +743,73 @@ pub fn function_cfg(
         .and_then(|functions| functions.first())
         .cloned()
         .ok_or_else(|| format!("elf2tdg matched no function for selector `{selector}`"))?;
+    // Mermaid source for the same function slice (rendered by the workbench).
+    let mermaid_path = directory.join(format!("{stem}.fn-{slug}.mmd"));
+    let mut mermaid_args = vec![
+        "--view".to_string(),
+        "cfg".to_string(),
+        "--format".to_string(),
+        "mermaid".to_string(),
+        "--function".to_string(),
+        selector.to_string(),
+        "--output".to_string(),
+        mermaid_path.display().to_string(),
+    ];
+    mermaid_args.extend(analysis_args(&options));
+    mermaid_args.push(elf.display().to_string());
+    let cfg_mermaid = match run_tool(&program, &mermaid_args)
+        .and_then(|()| fs::read_to_string(&mermaid_path).map_err(|error| error.to_string()))
+    {
+        Ok(source) => source,
+        Err(error) => {
+            warnings.push(format!("mermaid CFG export failed: {error}"));
+            String::new()
+        }
+    };
+
+    Ok(function_cfg_payload(&cfg, &function, selector, &json_path, cfg_mermaid, warnings))
+}
+
+/// Read evidence from the exact CFG exported by the selected run.
+pub fn function_cfg_from_run(artifact: &Path, selector: &str) -> Result<BinaryFunctionCfg, String> {
+    let source = fs::read_to_string(artifact).map_err(|error| {
+        format!(
+            "Cannot open the saved CFG at {}: {error}. Run timing analysis to rebuild the evidence.",
+            artifact.display()
+        )
+    })?;
+    let cfg: Value = serde_json::from_str(&source)
+        .map_err(|error| format!("Invalid saved CFG: {error}"))?;
+    let function_id = cfg
+        .get("roots")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|root| root.get("name").and_then(Value::as_str) == Some(selector))
+        .and_then(|root| root.get("function").and_then(Value::as_str));
+    let function = cfg
+        .get("functions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|function| {
+            ["id", "address", "primary_name", "demangled_name"]
+                .iter()
+                .any(|key| function.get(*key).and_then(Value::as_str) == Some(selector))
+                || function_id.is_some_and(|id| function.get("id").and_then(Value::as_str) == Some(id))
+        })
+        .ok_or_else(|| format!("Function {selector} is unavailable in the saved CFG."))?;
+    Ok(function_cfg_payload(&cfg, function, selector, artifact, String::new(), Vec::new()))
+}
+
+fn function_cfg_payload(
+    cfg: &Value,
+    function: &Value,
+    selector: &str,
+    json_path: &Path,
+    cfg_mermaid: String,
+    mut warnings: Vec<String>,
+) -> BinaryFunctionCfg {
     if cfg
         .get("diagnostics_omitted")
         .and_then(Value::as_bool)
@@ -804,38 +870,14 @@ pub fn function_cfg(
         .map(|items| items.iter().take(64).cloned().collect::<Vec<_>>())
         .unwrap_or_default();
 
-    // Mermaid source for the same function slice (rendered by the workbench).
-    let mermaid_path = directory.join(format!("{stem}.fn-{slug}.mmd"));
-    let mut mermaid_args = vec![
-        "--view".to_string(),
-        "cfg".to_string(),
-        "--format".to_string(),
-        "mermaid".to_string(),
-        "--function".to_string(),
-        selector.to_string(),
-        "--output".to_string(),
-        mermaid_path.display().to_string(),
-    ];
-    mermaid_args.extend(analysis_args(&options));
-    mermaid_args.push(elf.display().to_string());
-    let cfg_mermaid = match run_tool(&program, &mermaid_args)
-        .and_then(|()| fs::read_to_string(&mermaid_path).map_err(|error| error.to_string()))
-    {
-        Ok(source) => source,
-        Err(error) => {
-            warnings.push(format!("mermaid CFG export failed: {error}"));
-            String::new()
-        }
-    };
-
-    Ok(BinaryFunctionCfg {
+    BinaryFunctionCfg {
         selector: selector.to_string(),
-        name: text(&function, "primary_name"),
-        demangled_name: text(&function, "demangled_name"),
-        address: text(&function, "address"),
+        name: text(function, "primary_name"),
+        demangled_name: text(function, "demangled_name"),
+        address: text(function, "address"),
         size: function.get("size").and_then(Value::as_u64).unwrap_or(0),
-        kind: text(&function, "kind"),
-        language: text(&function, "language"),
+        kind: text(function, "kind"),
+        language: text(function, "language"),
         source: function.get("source").cloned().unwrap_or(Value::Null),
         inline_frames,
         entry: function
@@ -850,7 +892,7 @@ pub fn function_cfg(
         cfg_mermaid,
         json_path: json_path.display().to_string(),
         warnings,
-    })
+    }
 }
 
 /// Run the full ELF -> readable ELF -> CFG (+ preview image) workflow.
@@ -871,8 +913,8 @@ pub fn analyze(elf: &Path, options: &BinaryOptions) -> Result<ElfWorkflow, Strin
     // 1. Loader view: readable ELF layout (Mermaid source file).
     run_tool(&program, &elf_view_args(elf, &elf_mmd, &options))?;
 
-    // 2. CFG: one JSON export carries everything the workspace needs (DOT/SVG
-    // rendering is deferred: it made the initial load noticeably slower).
+    // Save instruction details with the CFG so evidence can be reopened
+    // without re-reading the ELF or applying a later board configuration.
     run_tool(&program, &cfg_json_args(elf, &cfg_json, &options))?;
 
     let layout = fs::read_to_string(&elf_mmd)
@@ -1163,6 +1205,10 @@ mod tests {
         assert!(!workflow.function_rows.is_empty());
         assert!(!workflow.cfg_text.is_empty());
         assert!(
+            workflow.coverage.total_instructions > 0,
+            "saved CFGs must carry instruction details"
+        );
+        assert!(
             workflow
                 .analysis
                 .profile
@@ -1172,6 +1218,22 @@ mod tests {
                 .contains("cortex-m4-pipeline"),
             "profile metadata must reach the analysis payload"
         );
+    }
+
+    #[test]
+    fn opens_function_evidence_from_a_saved_run() {
+        let artifact = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../examples/elf2tdg/cortex-m0-isr/artifacts/cfg-main.json",
+        );
+        let cfg = function_cfg_from_run(&artifact, "main").expect("saved entry point");
+        assert_eq!(cfg.name, "main");
+        assert!(cfg.blocks.iter().any(|block| {
+            block
+                .get("instructions")
+                .and_then(Value::as_array)
+                .is_some_and(|instructions| !instructions.is_empty())
+        }));
+        assert!(function_cfg_from_run(&artifact, "missing-function").is_err());
     }
 
     #[test]

@@ -8,7 +8,7 @@ mod workbench;
 mod workspace;
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -850,8 +850,12 @@ async fn binary_function(
     path: String,
     selector: String,
     options: Option<binary::BinaryOptions>,
+    run_artifact: Option<String>,
 ) -> Result<BinaryFunctionCfg, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(artifact) = run_artifact {
+            return binary::function_cfg_from_run(Path::new(&artifact), &selector);
+        }
         let elf = PathBuf::from(&path);
         if !elf.is_file() {
             return Err(format!("ELF not found: {}", elf.display()));
