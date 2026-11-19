@@ -31,10 +31,7 @@ function presetForArch(arch: string): { label: string; cpu: string; freq: string
 
 function friendlyCaveat(caveat: string): string {
   if (caveat.includes("No instruction timing model is available")) {
-    return (
-      "Timing model not selected: choose a CPU and board profile in RUN CONFIGURATION, " +
-      "then press RUN ANALYSIS. (elf2tdg milestone-M0 fallback when no model is resolved)"
-    );
+    return "No instruction timing model was resolved. Configure a compatible CPU to add timing estimates.";
   }
   return caveat;
 }
@@ -42,9 +39,11 @@ function friendlyCaveat(caveat: string): string {
 export function BinaryOverview({
   binary,
   onApplyPreset,
+  onSelectFunction,
 }: {
   binary: ElfWorkflow;
   onApplyPreset: (cpu: string, freq: string) => void;
+  onSelectFunction: (row: BinaryFunctionRow) => void;
 }) {
   const timing = binary.timing as Record<string, unknown>;
   const image = binary.image;
@@ -157,13 +156,10 @@ export function BinaryOverview({
             <b>
               {arch || "unknown"} to preset {preset.label} | {preset.cpu} @ {preset.freq}
             </b>
-            <span className="faint">
-              Applying the preset sets the CPU timing model and default frequency; press
-              RUN ANALYSIS in the toolbar to rebuild, or edit both in RUN CONFIGURATION.
-            </span>
+            <span className="faint">Review this suggested CPU and frequency in Configuration before the next run.</span>
           </div>
           <button className="btn small accent" onClick={() => onApplyPreset(preset.cpu, preset.freq)}>
-            APPLY PRESET
+            Review preset
           </button>
         </section>
       )}
@@ -195,7 +191,11 @@ export function BinaryOverview({
           <tbody>
             {hot.map((row) => (
               <tr key={row.id ?? row.address ?? row.name}>
-                <td className="bin-name">{row.name ?? "-"}</td>
+                <td className="bin-name">
+                  <button className="wb-button wb-quiet" onClick={() => onSelectFunction(row)}>
+                    {row.name || row.address || "Unnamed function"}
+                  </button>
+                </td>
                 <td className="mono">{row.address ?? "-"}</td>
                 <td>{row.kind ?? "-"}</td>
                 <td align="right">{row.size ?? "-"}</td>
@@ -206,8 +206,7 @@ export function BinaryOverview({
           </tbody>
         </table>
         <div className="faint">
-          Cycle values are board-model estimates from the active profile, not WCET
-          bounds. Open FUNCTIONS for the complete index, or CFG for the text listing.
+          Cycle values are static estimates. Open a function to inspect its blocks and instructions.
         </div>
       </section>
     </div>
@@ -248,14 +247,15 @@ export function BinaryFunctions({
       <div className="bin-toolbar">
         <input
           type="search"
-          placeholder="filter by name or address..."
+          aria-label="Filter by function name or address"
+          placeholder="Filter by name or address..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <select value={kind} onChange={(event) => setKind(event.target.value)}>
+        <select aria-label="Function kind" value={kind} onChange={(event) => setKind(event.target.value)}>
           {kinds.map((value) => (
             <option key={value} value={value}>
-              {value === "all" ? "all kinds" : value}
+              {value === "all" ? "All kinds" : value}
             </option>
           ))}
         </select>
@@ -278,13 +278,12 @@ export function BinaryFunctions({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr
-              key={row.id ?? row.address ?? row.name}
-              onClick={() => onSelect(row)}
-              className="bin-row-button"
-              title="Open in CFG stage"
-            >
-              <td className="bin-name">{row.name ?? "-"}</td>
+            <tr key={row.id ?? row.address ?? row.name}>
+              <td className="bin-name">
+                <button className="wb-button wb-quiet" onClick={() => onSelect(row)}>
+                  {row.name || row.address || "Unnamed function"}
+                </button>
+              </td>
               <td className="mono">{row.address ?? "-"}</td>
               <td>{row.kind ?? "-"}</td>
               <td align="right">{row.size ?? "-"}</td>
@@ -296,10 +295,7 @@ export function BinaryFunctions({
           ))}
         </tbody>
       </table>
-      <div className="faint">
-        Clicking a function selects it for the CFG stage. Instruction-level data and the
-        interactive graph arrive in the next UI phase.
-      </div>
+      {rows.length === 0 && <p className="wb-muted">No functions match these filters.</p>}
     </div>
   );
 }

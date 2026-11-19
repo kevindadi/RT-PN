@@ -960,16 +960,14 @@ pub fn run() {
         .setup(|app| {
             let data_directory = webview_data_directory(app.handle());
             let _ = std::fs::create_dir_all(&data_directory);
-            let window =
-                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("RT-PN  ·  Real-Time Petri Workbench")
-                    .inner_size(1540.0, 960.0)
-                    .min_inner_size(1120.0, 720.0)
-                    .resizable(true)
-                    .theme(Some(tauri::Theme::Dark))
-                    .data_directory(data_directory)
-                    .build()?;
-            let _ = window.set_title("RT-PN  ·  Real-Time Petri Workbench");
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                .title("RT-PN | Real-Time Systems Workbench")
+                .inner_size(1540.0, 960.0)
+                .min_inner_size(1120.0, 720.0)
+                .resizable(true)
+                .theme(Some(tauri::Theme::Dark))
+                .data_directory(data_directory)
+                .build()?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

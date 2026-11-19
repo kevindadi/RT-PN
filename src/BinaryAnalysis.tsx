@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { save } from "@tauri-apps/plugin-dialog";
+import { ArrowRight, Cpu } from "lucide-react";
 
 import { writeTextFile } from "./api";
-import { InstructionTiming } from "./InstructionTiming";
-import type { BinaryOptions, BinaryProfile, ElfWorkflow } from "./types";
+import type { BinaryOptions, ElfWorkflow } from "./types";
 
 const record = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -41,32 +41,16 @@ function CaveatList({ items }: { items: string[] }) {
 
 export function BinaryAnalysisView({
   binary,
-  boardProfile,
   options,
-  profiles,
-  busy,
-  canRun,
-  onOptionsChange,
-  onReloadProfiles,
-  onRun,
-  onProfileSaved,
   onOpenPath,
-  showSetup,
   onOpenConfig,
+  onOpenCfg,
 }: {
   binary: ElfWorkflow;
-  boardProfile: string;
   options: BinaryOptions;
-  profiles: BinaryProfile[];
-  busy: boolean;
-  canRun: boolean;
-  onOptionsChange: (next: BinaryOptions) => void;
-  onReloadProfiles: () => void;
-  onRun: () => void;
-  onProfileSaved: (path: string) => void;
   onOpenPath: (selector: string, path: string[]) => void;
-  showSetup: boolean;
   onOpenConfig: () => void;
+  onOpenCfg: () => void;
 }) {
   const analysis = binary.analysis;
   const model = record(analysis?.model) ?? {};
@@ -84,47 +68,30 @@ export function BinaryAnalysisView({
   const profileId = str(extras?.board_profile_id) || "no board profile";
   const profileSha = str(extras?.board_profile_sha256);
   const profileSource = str(extras?.board_profile_source);
+  const pipeline = str(extras.board_profile_pipeline);
 
-  const selectedProfile = profiles.find(
-    (profile) => profile.path === options.board_profile,
-  );
+  const domains = Array.isArray(binary.timing?.frequency_domains) ? binary.timing.frequency_domains as unknown[] : [];
+  const frequency = num(wcet?.frequency_hz) ?? num(record(domains[0])?.hz);
   const runCpu = str(model.id);
-  const runProfileSource = str(profileSource);
-  const selectedProfileFile = (options.board_profile ?? "").split(/[\\/]/).pop() ?? "";
-  const configDirty =
-    (Boolean(options.cpu) && options.cpu !== runCpu) ||
-    (Boolean(options.board_profile) &&
-      (runProfileSource === "" ||
-        !runProfileSource.endsWith(selectedProfileFile))) ||
-    (!options.board_profile && runProfileSource !== "");
-  const frequency = num(wcet?.frequency_hz);
-
   const [exportNote, setExportNote] = useState("");
-  const [tab, setTab] = useState<
-    "summary" | "wcet" | "cache" | "memory" | "branch" | "timing"
-  >("summary");
-
-  const importProfileFile = async () => {
-    const path = await open({
-      multiple: false,
-      filters: [{ name: "Board profile", extensions: ["toml"] }],
-    });
-    if (typeof path === "string" && path) {
-      onOptionsChange({ ...options, board_profile: path });
-    }
-  };
+  const [selectedTab, setTab] = useState("summary");
+  const tabs = [
+    { id: "summary", label: "Summary", available: true },
+    { id: "wcet", label: "Longest path", available: Boolean(wcet) },
+    { id: "cache", label: "Caches", available: Boolean(icache || dcache) },
+    { id: "memory", label: "Data memory", available: Boolean(memory) },
+    { id: "pipeline", label: "Pipeline", available: Boolean(pipeline) },
+    { id: "branch", label: "Branches", available: Boolean(branch) },
+  ].filter((item) => item.available);
+  const tab = tabs.some((item) => item.id === selectedTab) ? selectedTab : "summary";
 
   const reproduceCommand = [
-    "elf2tdg",
-    binary.elf_path,
-    "--view cfg",
-    "--format json",
-    "--cpu",
-    str(model.id) || "auto",
-    boardProfile ? `--board-profile ${boardProfile}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    "elf2tdg --view cfg --format json",
+    options.cpu ? `--cpu ${options.cpu}` : "",
+    options.board_profile ? `--board-profile "${options.board_profile}"` : "",
+    options.freq ? `--freq ${options.freq}` : "",
+    `"${binary.elf_path}"`,
+  ].filter(Boolean).join(" ");
 
   const reportText = () => {
     const lines = [
@@ -231,235 +198,76 @@ export function BinaryAnalysisView({
   };
 
   return (
-    <div className="bin-analysis">
-      {showSetup ? (
-        <section className="analysis-setup">
-        <div className="analysis-setup-head">
-          <div>
-            <div className="sem-eyebrow">ANALYSIS SETUP | RUN CONFIGURATION</div>
-            <h3>Choose how the static timing model is built</h3>
-            <div className="faint">
-              CPU model supplies the built-in instruction costs. A board profile adds
-              caches, branch prediction, data-memory timing and WCET bounds, and pins the
-              CPU model. Frequency converts cycles to nanoseconds. Press RUN ANALYSIS to
-              rebuild the cached results.
-            </div>
-          </div>
-          <button className="btn accent" disabled={!canRun || busy} onClick={onRun}>
-            {busy ? "ANALYZING..." : "RUN ANALYSIS"}
-          </button>
-        </div>
-        <div className="analysis-setup-grid">
-          <label>
-            <span>1 | CPU TIMING MODEL</span>
-            <select
-              value={options.cpu ?? ""}
-              disabled={busy}
-              onChange={(event) =>
-                onOptionsChange({ ...options, cpu: event.target.value || undefined })
-              }
-            >
-              <option value="">auto-detect</option>
-              {["cortex-m4", "cortex-m7", "cortex-m33", "riscv32", "aarch64", "x86-64"].map(
-                (cpu) => (
-                  <option key={cpu} value={cpu}>
-                    {cpu}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-          <label>
-            <span>2 | BOARD PROFILE</span>
-            <select
-              value={options.board_profile ?? ""}
-              disabled={busy}
-              onChange={(event) => {
-                const path = event.target.value;
-                const chosen = profiles.find((profile) => profile.path === path);
-                onOptionsChange({
-                  ...options,
-                  board_profile: path || undefined,
-                  cpu: chosen?.cpu ?? options.cpu,
-                });
-              }}
-            >
-              <option value="">none (built-in CPU table only)</option>
-              {options.board_profile &&
-                !profiles.some((profile) => profile.path === options.board_profile) && (
-                  <option value={options.board_profile}>
-                    {(options.board_profile.split(/[\\/]/).pop() ?? "custom profile") +
-                      " (custom file)"}
-                  </option>
-                )}
-              {profiles.map((profile) => (
-                <option key={profile.path} value={profile.path}>
-                  {profile.name}
-                  {profile.cpu ? ` | ${profile.cpu}` : ""}
-                </option>
-              ))}
-            </select>
-            <button className="btn small" disabled={busy} onClick={() => void importProfileFile()}>
-              OPEN PROFILE FILE...
-            </button>
-          </label>
-          <label>
-            <span>3 | FREQUENCY</span>
-            <input
-              value={options.freq ?? ""}
-              disabled={busy}
-              placeholder="e.g. 168MHz"
-              onChange={(event) =>
-                onOptionsChange({ ...options, freq: event.target.value || undefined })
-              }
-            />
-          </label>
-        </div>
-        <div className="action-row" style={{ marginBottom: 8 }}>
-          <button className="btn small" onClick={() => setTab("timing")}>
-            EDIT INSTRUCTION TIMING &amp; PROFILE
-          </button>
-          <span className="faint">
-            CPU selects the built-in instruction timing table. A board profile is an
-            optional TOML file with caches/branch/memory/WCET settings; choose one above,
-            open your own file, or edit the selected one in the TIMING &amp; PROFILE tab.
-          </span>
-        </div>
-        {configDirty && (
-          <div className="faint" style={{ color: "#f2c14e" }}>
-            Configuration changed since this run - press RUN ANALYSIS to rebuild. The
-            results and caveats below still describe the previous run.
-          </div>
-        )}
-        {selectedProfile?.cpu && options.cpu && selectedProfile.cpu !== options.cpu && (
-          <div className="faint" style={{ color: "#ff9b9b" }}>
-            This profile pins CPU <code>{selectedProfile.cpu}</code>, but the selected CPU
-            is <code>{options.cpu}</code>; RUN ANALYSIS would fail.{" "}
-            <button
-              className="btn small"
-              onClick={() =>
-                onOptionsChange({ ...options, cpu: selectedProfile.cpu })
-              }
-            >
-              SET CPU TO {selectedProfile.cpu}
-            </button>
-          </div>
-        )}
-        <div className="faint">
-          Without a board profile only the CPU's built-in instruction table is applied,
-          so CACHES / DATA MEMORY / BRANCHES / WCET stay empty - that is expected, not a
-          failure. With <code>cortex-m4-pipeline</code> you get pipeline cycle costs;
-          cache/WCET profiles must match the selected CPU (e.g. <code>cortex-m7-wcet</code>{" "}
-          needs CPU <code>cortex-m7</code>).{" "}
-          {profiles.length === 0 && (
-            <>
-              <button className="btn small" onClick={onReloadProfiles}>
-                RELOAD PROFILES
-              </button>
-            </>
-          )}
-        </div>
-      </section>
-      ) : (
-        <section className="analysis-setup">
-          <div className="analysis-setup-head">
-            <div>
-              <div className="sem-eyebrow">CONFIGURATION</div>
-              <h3>
-                {str(model.id) || "no timing model"} | {profileId} |{" "}
-                {frequency !== null
-                  ? `${(frequency / 1_000_000).toFixed(1)} MHz`
-                  : "no frequency"}
-              </h3>
-              <div className="faint">
-                Timing model, board profile and frequency are edited in the configuration
-                dialog. The results below belong to the displayed run.
-              </div>
-            </div>
-            <button className="btn accent" onClick={onOpenConfig}>
-              OPEN CONFIGURATION
-            </button>
-          </div>
-        </section>
-      )}
-
-      <div className="analysis-toolbar">
+    <div className="bin-analysis wb-document">
+      <section className={`wb-notice ${runCpu ? "wb-notice-neutral" : "wb-notice-warning"}`}>
+        <Cpu size={22} aria-hidden="true" />
         <div>
-          <div className="sem-eyebrow">STATIC ANALYSIS | BOARD PROFILE</div>
-          <h3 className="analysis-title">
-            {str(model.id) || "no timing model"} | {profileId}
-          </h3>
-          <div className="mono faint">
-            {str(model.core) || "-"} | {str(model.determinism) || "-"} |{" "}
-            {frequency !== null
-              ? `${(frequency / 1_000_000).toFixed(1)} MHz`
-              : "no frequency"}
-            {profileSha ? ` | sha ${profileSha.slice(0, 12)}...` : ""}
-          </div>
+          <h2>{runCpu ? "Static timing estimate" : "Control flow is ready"}</h2>
+          <p>{runCpu
+            ? `Estimates use ${runCpu} and ${profileId === "no board profile" ? "the built-in timing table" : profileId}.${frequency !== null ? ` Core frequency ${(frequency / 1_000_000).toFixed(1)} MHz.` : ""} Hardware execution-time bounds have not been verified.`
+            : "This run has no instruction timing model. Browse the CFG or configure a CPU and board profile."}</p>
         </div>
-        <div className="action-row">
-          <button className="btn small" onClick={() => void exportReport("md")}>
-            EXPORT MD
-          </button>
-          <button className="btn small" onClick={() => void exportReport("json")}>
-            EXPORT JSON
-          </button>
-        </div>
-      </div>
-      {exportNote && <div className="faint analysis-note">{exportNote}</div>}
+        {runCpu
+          ? <button className="wb-button" onClick={onOpenConfig}>Edit configuration</button>
+          : <div className="wb-actions"><button className="wb-button" onClick={onOpenCfg}>Browse CFG</button><button className="wb-button" onClick={onOpenConfig}>Configure timing</button></div>}
+      </section>
 
-      <div className="cfg-tabs result-tabs">
-        {(
-          [
-            ["summary", "SUMMARY"],
-            ["wcet", "WCET"],
-            ["cache", "CACHES"],
-            ["memory", "DATA MEMORY"],
-            ["branch", "BRANCHES"],
-            ["timing", "TIMING & PROFILE"],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            className={`btn small ${tab === value ? "accent" : ""}`}
-            onClick={() => setTab(value)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="wb-analysis-actions">
+        {tabs.length > 1 && (
+          <nav className="wb-subnav wb-subnav-inline" aria-label="Timing result views">
+            {tabs.map((item) => (
+              <button key={item.id} aria-current={tab === item.id ? "page" : undefined} onClick={() => setTab(item.id)}>{item.label}</button>
+            ))}
+          </nav>
+        )}
+        <details className="wb-menu">
+          <summary className="wb-button">Export report</summary>
+          <div className="wb-menu-content">
+            <button onClick={() => void exportReport("md")}>Markdown report</button>
+            <button onClick={() => void exportReport("json")}>JSON report</button>
+          </div>
+        </details>
       </div>
+      {exportNote && <p className="wb-muted" role="status">{exportNote}</p>}
 
       {tab === "summary" && (
         <>
-          <div className="analysis-facts">
-            <Fact label="model" value={str(model.id) || "none"} />
-            <Fact label="board profile" value={profileId} />
-            <Fact
-              label="frequency"
-              value={frequency !== null ? `${(frequency / 1_000_000).toFixed(1)} MHz` : "-"}
-            />
-            <Fact label="wcet roots" value={String(wcetRoots.length)} />
-            <Fact label="functions" value={String(binary.functions)} />
-            <Fact label="instructions" value={String(binary.coverage.total_instructions)} />
-          </div>
-          <CaveatList items={analysisCaveats} />
-          <div className="faint">
-            Pick a tab above for WCET roots, cache, data-memory, branch-prediction or the
-            instruction-timing model. Export buttons above save the current run as MD/JSON.
-          </div>
+          <dl className="wb-facts">
+            <div><dt>Functions recovered</dt><dd>{binary.functions.toLocaleString("en-US")}</dd></div>
+            <div><dt>Instructions counted</dt><dd>{binary.coverage?.total_instructions?.toLocaleString("en-US") ?? "-"}</dd></div>
+            <div><dt>Unknown mnemonics</dt><dd>{binary.coverage?.unknown_mnemonics?.toLocaleString("en-US") ?? "-"}</dd></div>
+          </dl>
+          {wcetRoots.length > 0 && (
+            <section className="wb-panel">
+              <div className="wb-panel-heading">
+                <h2>Timing by entry point</h2>
+                <button className="wb-button wb-quiet" onClick={() => setTab("wcet")}>Longest-path details <ArrowRight size={15} /></button>
+              </div>
+              <div className="wb-table-scroll">
+                <table className="wb-table">
+                  <thead><tr><th>Entry point</th><th>Status</th><th>Cycles</th><th>Time (ns)</th><th>Evidence</th></tr></thead>
+                  <tbody>{wcetRoots.map((root, index) => (
+                    <tr key={`${str(root.function)}-${index}`}>
+                      <th scope="row">{str(root.name) || str(root.function) || "-"}</th>
+                      <td>{str(root.status)}</td>
+                      <td>{fmtNumber(root.cycles, 1)}</td>
+                      <td>{fmtNumber(root.time_ns, 1)}</td>
+                      <td>{Array.isArray(root.path) && root.path.length > 0
+                        ? <button className="wb-button wb-quiet" onClick={() => onOpenPath(str(root.function).replace(/^fn:/, "") || str(root.name), root.path as string[])}>View path <ArrowRight size={14} /></button>
+                        : "-"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </section>
+          )}
+          {analysisCaveats.length > 0 && (
+            <details className="wb-panel wb-disclosure">
+              <summary>Assumptions and diagnostics</summary>
+              <CaveatList items={analysisCaveats} />
+            </details>
+          )}
         </>
-      )}
-
-      {!wcet && !icache && !dcache && !memory && !branch && (
-        <div className="bin-caveats">
-          <div className="sem-eyebrow">NO ANALYSIS DATA IN THIS RUN</div>
-          <div className="faint" style={{ marginTop: 6 }}>
-            This run used no timing model or board profile, so the result cards are empty.
-            Set a CPU (and optionally a board profile) in the ANALYSIS SETUP panel above,
-            then press RUN ANALYSIS. Use the bundled ELF EXAMPLE if you want a ready-made
-            configuration.
-          </div>
-        </div>
       )}
 
       <div className="analysis-grid">
@@ -503,11 +311,11 @@ export function BinaryAnalysisView({
                           className="btn small"
                           onClick={() => {
                             const selector =
-                              str(root.name) || str(root.function).replace(/^fn:/, "");
+                              str(root.function).replace(/^fn:/, "") || str(root.name);
                             onOpenPath(selector, root.path as string[]);
                           }}
                         >
-                          CFG
+                          View path
                         </button>
                       ) : (
                         "-"
@@ -580,15 +388,19 @@ export function BinaryAnalysisView({
             <CaveatList items={Array.isArray(branch.caveats) ? (branch.caveats as string[]) : []} />
           </section>
         )}
+        {tab === "pipeline" && pipeline && (
+          <section className="wb-panel">
+            <h2>Instruction pipeline</h2>
+            <p className="wb-muted">The selected pipeline model contributes to the basic-block cycle estimates.</p>
+            <div className="analysis-facts">
+              <Fact label="Issue width" value={str(extras.board_profile_pipeline_issue_width) || "-"} />
+              <Fact label="Instruction overrides" value={str(extras.board_profile_pipeline_instruction_overrides) || "-"} />
+            </div>
+            <button className="wb-button" onClick={onOpenCfg}>Inspect block timings <ArrowRight size={15} /></button>
+          </section>
+        )}
       </div>
 
-      {tab === "timing" && (
-        <InstructionTiming
-          binary={binary}
-          boardProfile={boardProfile}
-          onProfileSaved={onProfileSaved}
-        />
-      )}
     </div>
   );
 }

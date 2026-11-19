@@ -1,29 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Activity,
-  Binary,
-  Boxes,
-  Braces,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  CircleHelp,
   Copy,
-  Cpu,
   Eye,
   FileCode2,
   FolderOpen,
-  GitBranch,
-  Layers3,
   Network,
   Play,
-  Plus,
   RefreshCw,
+  Square,
   Terminal,
-  Upload,
+  X,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { invoke } from "@tauri-apps/api/core";
+import { join } from "@tauri-apps/api/path";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 
@@ -51,10 +46,12 @@ import {
   writeTextFile,
 } from "./api";
 import { BinaryAnalysisView } from "./BinaryAnalysis";
-import { AnalysisConfigDialog } from "./AnalysisConfigDialog";
+import { BinaryConfiguration } from "./BinaryConfiguration";
 import { BinaryCfg } from "./BinaryCfg";
 import { BinaryCompare } from "./BinaryCompare";
-import { BinaryOverview } from "./BinaryStages";
+import { BinaryFunctions, BinaryOverview } from "./BinaryStages";
+import { SchedulingResults, schedulingMetrics, schedulingOutcome } from "./SchedulingResults";
+import { WorkbenchBrand, WorkbenchHome, WorkbenchNavigation, workspaceSections } from "./Workbench";
 import { WorkflowGuide } from "./Guide";
 import { CodeStage } from "./CodeStage";
 import { GraphPreview, SvgPreview } from "./GraphPreview";
@@ -84,82 +81,22 @@ import type {
   WorkspaceProject,
 } from "./types";
 
-const STAGES: Record<
-  Stage,
-  { label: string; title: string; subtitle: string; previewable: boolean }
-> = {
-  dag: {
-    label: "DAG",
-    title: "TASK GRAPH",
-    subtitle: "Text-first DAG / task view | explicit timing provenance",
-    previewable: false,
-  },
-  ptpn: {
-    label: "PTPN",
-    title: "PTPN STRUCTURE",
-    subtitle: "Places, transitions and arcs as dense text",
-    previewable: true,
-  },
-  semantics: {
-    label: "SEMANTICS",
-    title: "SCHEDULING SEMANTICS",
-    subtitle: "Formal state, firing rule and animation for the selected policy",
-    previewable: false,
-  },
-  state: {
-    label: "STATE SPACE",
-    title: "STATE-CLASS SPACE",
-    subtitle: "Reachability classes and transitions as text",
-    previewable: true,
-  },
-  replay: {
-    label: "REPLAY",
-    title: "STATE-CLASS REPLAY",
-    subtitle: "Step through a real transition path: marking, E_pri and clocks",
-    previewable: false,
-  },
-  timeline: {
-    label: "TIMELINE",
-    title: "TIMELINE / ENVELOPES",
-    subtitle: "Response envelopes | not a concrete schedule",
-    previewable: false,
-  },
-  report: {
-    label: "REPORT",
-    title: "REPORT",
-    subtitle: "Copyable analysis report with assumptions",
-    previewable: false,
-  },
-  elf: {
-    label: "ELF",
-    title: "ELF LAYOUT",
-    subtitle: "Readable ELF layout as text | PREVIEW renders the Mermaid image",
-    previewable: true,
-  },
-  overview: {
-    label: "OVERVIEW",
-    title: "BINARY OVERVIEW",
-    subtitle: "Image, timing model, roots and hot functions of the CFG",
-    previewable: false,
-  },
-  functions: {
-    label: "FUNCTIONS",
-    title: "FUNCTION INDEX",
-    subtitle: "Searchable functions with block/call/cycle metadata",
-    previewable: false,
-  },
-  cfg: {
-    label: "CFG",
-    title: "CONTROL-FLOW GRAPH",
-    subtitle: "Interactive function CFG with instruction inspector",
-    previewable: true,
-  },
-  analysis: {
-    label: "ANALYSIS",
-    title: "STATIC ANALYSIS",
-    subtitle: "Board-profile cache, branch, memory and WCET results",
-    previewable: false,
-  },
+const STAGES: Record<Stage, { label: string; title: string; subtitle: string; previewable?: boolean }> = {
+  source: { label: "Source", title: "Model source", subtitle: "Review the input to scheduling verification." },
+  dag: { label: "Task graph", title: "Task model", subtitle: "Review dependencies, priorities, core assignments, and timing." },
+  configuration: { label: "Configuration", title: "Run configuration", subtitle: "Settings for the next analysis." },
+  results: { label: "Summary", title: "Verification results", subtitle: "Review deadlocks, deadlines, and worst-case response times." },
+  ptpn: { label: "Petri net", title: "Priority timed Petri net", subtitle: "Inspect places, transitions, and arcs.", previewable: true },
+  semantics: { label: "Semantics", title: "Scheduling semantics", subtitle: "Inspect the policy rules and compare scheduling policies." },
+  state: { label: "State space", title: "State-class graph", subtitle: "Inspect the explored states and transitions.", previewable: true },
+  replay: { label: "Replay", title: "State-class replay", subtitle: "Step through the recorded transition path." },
+  timeline: { label: "Timing windows", title: "Response-time envelopes", subtitle: "Review the range of completion times by task." },
+  report: { label: "Report", title: "Analysis report", subtitle: "Read the analyzer output and assumptions." },
+  elf: { label: "Sections", title: "ELF layout", subtitle: "Inspect ELF segments, sections, and the loader view.", previewable: true },
+  overview: { label: "Overview", title: "Firmware overview", subtitle: "Inspect the image and the recovered program structure." },
+  functions: { label: "Functions", title: "Function index", subtitle: "Find a function by name or address and open its control flow." },
+  cfg: { label: "Control flow", title: "Control-flow evidence", subtitle: "Inspect basic blocks and their instructions.", previewable: true },
+  analysis: { label: "Timing", title: "Firmware timing results", subtitle: "Review static timing estimates and their hardware assumptions." },
 };
 
 type Tone = "muted" | "accent" | "good" | "warn" | "bad" | "violet";
@@ -186,29 +123,16 @@ interface ImagePreviewState {
   footer: string;
 }
 
-interface Metrics {
-  schedulable?: boolean;
-  exact?: boolean;
-  truncated?: boolean;
-  hyperperiod?: number;
-  states?: number;
-  deadlocks?: number;
-  tasks?: Array<{
-    name?: string;
-    core?: number;
-    deadline?: number;
-    wcrt?: number;
-    slack?: number | null;
-    deadline_missed?: boolean;
-  }>;
-  cores?: unknown[];
-  deadlock_states?: number[];
-}
-
 interface Budget {
   maxStates: number;
   timeoutSecs: number;
   maxMemoryMb: number;
+}
+
+interface SchedulingConfiguration {
+  budget: Budget;
+  policy: string;
+  tie: string;
 }
 
 interface RunSnapshot {
@@ -218,7 +142,7 @@ interface RunSnapshot {
   ok: boolean;
   partial: boolean;
   canceled: boolean;
-  schedulable?: boolean;
+  schedulable?: boolean | null;
   exact?: boolean;
   truncated?: boolean;
   states: number;
@@ -228,7 +152,7 @@ interface RunSnapshot {
 }
 
 function snapshotFrom(payload: AnalysisPayload, budgets: Budget, id: number): RunSnapshot {
-  const metrics = (payload.result.metrics ?? {}) as Metrics;
+  const metrics = schedulingMetrics(payload);
   const wcrt: Record<string, number> = {};
   for (const task of metrics.tasks ?? []) {
     if (task?.name && typeof task.wcrt === "number") {
@@ -345,66 +269,6 @@ function buildMarkdownReport(
   return lines.join("\n");
 }
 
-function WcrtChart({ tasks }: { tasks: NonNullable<Metrics["tasks"]> }) {
-  const scale = Math.max(
-    1,
-    ...tasks.map((task) => Math.max(task.wcrt ?? 0, task.deadline ?? 0)),
-  );
-  return (
-    <div style={{ display: "grid", gap: 6 }}>
-      {tasks.map((task) => {
-        const wcrt = task.wcrt ?? 0;
-        const deadline = task.deadline ?? 0;
-        const missed = task.deadline_missed ?? (deadline > 0 && wcrt > deadline);
-        const slack = deadline > 0 ? deadline - wcrt : task.slack;
-        return (
-          <div key={task.name ?? "task"} style={{ fontSize: 10 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span className="mono">{task.name ?? "task"}</span>
-              <span className="faint">
-                wcrt {wcrt}
-                {deadline > 0 ? ` / d ${deadline}` : ""}
-                {typeof slack === "number" ? ` | slack ${slack}` : ""}
-              </span>
-            </div>
-            <div
-              style={{
-                position: "relative",
-                height: 8,
-                background: "#0b1422",
-                border: "1px solid #1d3350",
-                borderRadius: 2,
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: `${Math.min(100, (wcrt / scale) * 100)}%`,
-                  background: missed ? "#ff6b6b" : "#4fa3ff",
-                }}
-              />
-              {deadline > 0 && (
-                <div
-                  title="deadline"
-                  style={{
-                    position: "absolute",
-                    top: -3,
-                    bottom: -3,
-                    left: `${Math.min(100, (deadline / scale) * 100)}%`,
-                    width: 1,
-                    background: "#f2c14e",
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose: () => void }) {
   const rows: Array<{ label: string; before: string; after: string; regressed: boolean }> = [
     {
@@ -510,12 +374,6 @@ function RunCompare({ a, b, onClose }: { a: RunSnapshot; b: RunSnapshot; onClose
   );
 }
 
-function stagesFor(workflow: Workflow): Stage[] {
-  return workflow === "binary"
-    ? ["overview", "elf", "cfg", "analysis"]
-    : ["dag", "ptpn", "semantics", "state", "replay", "timeline", "report"];
-}
-
 function stageDoc(stage: Stage, docs: WorkbenchDocs | undefined): string {
   if (!docs) return "";
   switch (stage) {
@@ -546,26 +404,8 @@ function binaryDoc(stage: Stage, elf: ElfWorkflow | null | undefined): string {
   }
 }
 
-function stageSummary(stage: Stage, docs: WorkbenchDocs | undefined): string {
-  if (!docs) return "";
-  switch (stage) {
-    case "dag":
-      return docs.dag_summary;
-    case "ptpn":
-      return docs.ptpn_summary;
-    case "state":
-      return docs.state_summary;
-    case "timeline":
-      return docs.timeline_summary;
-    case "report":
-      return docs.report_summary;
-    default:
-      return "";
-  }
-}
-
 function fileName(path: string | null | undefined): string {
-  if (!path) return "NO MODEL";
+  if (!path) return "No file selected";
   return path.split(/[\\/]/).pop() ?? path;
 }
 
@@ -577,18 +417,10 @@ function isBinaryPath(path: string): boolean {
   return /\.(elf|out|axf)$/i.test(path);
 }
 
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function valueString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-function analysisModelId(binary: ElfWorkflow): string {
-  const model = binary.analysis?.model;
-  if (model === null || typeof model !== "object") return "no timing model";
-  return valueString((model as Record<string, unknown>).id) || "no timing model";
+function sameBinaryOptions(left: BinaryOptions, right: BinaryOptions): boolean {
+  return (left.cpu ?? "") === (right.cpu ?? "") &&
+    (left.freq ?? "") === (right.freq ?? "") &&
+    (left.board_profile ?? "") === (right.board_profile ?? "");
 }
 
 /** Guard rails so a huge Mermaid/text layout never blocks the workbench. */
@@ -599,23 +431,21 @@ function timestamp(): string {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-interface BinaryRunConfig {
-  id: string;
-  name: string;
-  cpu?: string;
-  freq?: string;
-  board_profile?: string;
-}
-
-const BINARY_CONFIGS_KEY = "rtpn.binary.configs.v1";
-
 export default function App() {
   const [workflow, setWorkflow] = useState<Workflow>("none");
   const [hub, setHub] = useState(true);
   const [analysis, setAnalysis] = useState<AnalysisPayload | null>(null);
   const [binary, setBinary] = useState<ElfWorkflow | null>(null);
   const [currentPath, setCurrentPath] = useState<string | null>(null);
-  const [activeStage, setActiveStage] = useState<Stage>("dag");
+  const [activeStage, setActiveStage] = useState<Stage>("source");
+  const [source, setSource] = useState<{ path: string; text: string; error?: string } | null>(null);
+  const [showOutput, setShowOutput] = useState(false);
+  const [homeComparison, setHomeComparison] = useState<Detail | null>(null);
+  const [specRunConfig, setSpecRunConfig] = useState<SchedulingConfiguration | null>(null);
+  const [binaryRunOptions, setBinaryRunOptions] = useState<BinaryOptions | null>(null);
+  const [binaryUsesStoredRun, setBinaryUsesStoredRun] = useState(false);
+  const runningRef = useRef(false);
+  const cfgRequest = useRef(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>({ text: "NO PROJECT", tone: "muted" });
   const [history, setHistory] = useState<RunRecord[]>([]);
@@ -631,7 +461,6 @@ export default function App() {
     footer: string;
   } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
   const [cli, setCli] = useState<EngineHealth | null>(null);
   const [elf2tdg, setElf2tdg] = useState<EngineHealth | null>(null);
   const [budget, setBudget] = useState<Budget>({
@@ -644,6 +473,7 @@ export default function App() {
   const [snapshots, setSnapshots] = useState<RunSnapshot[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const [pending, setPending] = useState<PendingMeasurement[]>([]);
+  const [pendingMessage, setPendingMessage] = useState("");
   const [pendingInputs, setPendingInputs] = useState<Record<string, string>>({});
   const [fillBusy, setFillBusy] = useState(false);
   const [allocation, setAllocation] = useState<AllocationReport | null>(null);
@@ -662,16 +492,6 @@ export default function App() {
   const [cfgLoading, setCfgLoading] = useState(false);
   const [cfgError, setCfgError] = useState<string | null>(null);
   const [wcetPath, setWcetPath] = useState<string[] | null>(null);
-  const [binaryFunctionQuery, setBinaryFunctionQuery] = useState("");
-  const [configName, setConfigName] = useState("");
-  const [binaryConfigs, setBinaryConfigs] = useState<BinaryRunConfig[]>(() => {
-    try {
-      const stored = localStorage.getItem(BINARY_CONFIGS_KEY);
-      return stored ? (JSON.parse(stored) as BinaryRunConfig[]) : [];
-    } catch {
-      return [];
-    }
-  });
   const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProject[]>([]);
 
   useEffect(() => {
@@ -680,13 +500,6 @@ export default function App() {
       .catch(() => undefined);
   }, [hub, workflow]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(BINARY_CONFIGS_KEY, JSON.stringify(binaryConfigs));
-    } catch {
-      // storage can be unavailable in restricted webviews; configurations are optional
-    }
-  }, [binaryConfigs]);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSelected, setCompareSelected] = useState<string[]>([]);
   const [compareLanes, setCompareLanes] = useState<CompareLane[]>([]);
@@ -697,33 +510,37 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const openPathRef = useRef<(path: string) => void>(() => undefined);
 
-  const metrics = (analysis?.result.metrics ?? {}) as Metrics;
-  const stages = stagesFor(workflow);
   const isBinary = workflow === "binary";
+  const section = workspaceSections(isBinary).find(({ stages }) =>
+    (stages as readonly Stage[]).includes(activeStage),
+  );
+  const relatedStages = section?.stages ?? [];
+  const activeSource = source?.path === currentPath ? source : null;
   const doc = isBinary
     ? binaryDoc(activeStage, binary)
-    : stageDoc(activeStage, analysis?.docs);
-  const binarySummary = binary
-    ? activeStage === "overview"
-      ? `${binary.schema || "cfg"} | ${binary.functions} fns | ${binary.roots.length} roots`
-      : activeStage === "functions"
-        ? `${binary.function_rows.length} functions | click a row to open the CFG`
-        : activeStage === "analysis"
-          ? `${analysisModelId(binary)} | ${binary.analysis?.caveats?.length ?? 0} caveats`
-          : activeStage === "elf"
-          ? `${(binary.file_size / 1024).toFixed(1)} KB | ${binary.artifacts_dir}`
-          : `${binary.functions} fns | ${binary.blocks} blocks | ${binary.calls} calls | ${binary.diagnostics} diagnostics`
-    : "";
-  const summary = isBinary ? binarySummary : stageSummary(activeStage, analysis?.docs);
-  const assumptions = isBinary
-    ? binary?.warnings.join("\n") ||
-      "elf2tdg loader view -> readable CFG -> Graphviz preview. Threads/net analysis is pending."
-    : analysis?.docs?.assumptions ?? "";
+    : activeStage === "source"
+      ? activeSource?.text ?? ""
+      : stageDoc(activeStage, analysis?.docs);
+  const taskMetrics = schedulingMetrics(analysis).tasks ?? [];
+  const resultPolicy = policyById(specRunConfig?.policy ?? policy);
+  const optionsDirty = isBinary
+    ? binaryRunOptions !== null && !sameBinaryOptions(binaryRunOptions, binaryOptions)
+    : specRunConfig !== null && (
+      specRunConfig.budget.maxStates !== budget.maxStates ||
+      specRunConfig.budget.timeoutSecs !== budget.timeoutSecs ||
+      specRunConfig.budget.maxMemoryMb !== budget.maxMemoryMb ||
+      specRunConfig.policy !== policy || specRunConfig.tie !== tie
+    );
+  const operationBusy = busy || sweepBusy || compareBusy || allocateBusy || fillBusy;
 
-  const deadlockSteps = analysis?.deadlock_trace ?? null;
-  const deadlockCount = metrics.deadlock_states?.length ?? 0;
-  const taskMetrics = metrics.tasks ?? [];
-  const policyInfo = policyById(policy);
+  useEffect(() => {
+    if (isBinary || !currentPath || activeStage !== "source") return;
+    let active = true;
+    void readTextFile(currentPath)
+      .then((text) => { if (active) setSource({ path: currentPath, text }); })
+      .catch((error) => { if (active) setSource({ path: currentPath, text: "", error: String(error) }); });
+    return () => { active = false; };
+  }, [isBinary, currentPath, activeStage]);
 
   useEffect(() => {
     if (workflow !== "binary") return;
@@ -731,15 +548,6 @@ export default function App() {
       .then((items) => setProfiles(items))
       .catch(() => setProfiles([]));
   }, [workflow]);
-
-  const openDeadlockPreview = () => {
-    if (!analysis?.deadlock_graph) return;
-    setPreview({
-      graph: analysis.deadlock_graph,
-      title: "DEADLOCK COUNTEREXAMPLE",
-      footer: "Shortest path from the initial state class to a reachable deadlock",
-    });
-  };
 
   useEffect(() => {
     engineHealth()
@@ -757,9 +565,9 @@ export default function App() {
     const pending = listen<{ line: string; elapsed_ms: number }>("analysis-log", (event) => {
       setLiveLog((previous) => [...previous.slice(-199), event.payload.line]);
       setLiveElapsed(event.payload.elapsed_ms);
-    });
+    }).catch(() => () => undefined);
     return () => {
-      void pending.then((unlisten) => unlisten());
+      void pending.then((unlisten) => unlisten()).catch(() => undefined);
     };
   }, []);
 
@@ -788,6 +596,10 @@ export default function App() {
       if (event.key === "Escape") {
         setPreview(null);
         setImagePreview(null);
+        setMermaidPreview(null);
+        setShowOutput(false);
+        setGuideOpen(false);
+        setHomeComparison(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -795,6 +607,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     let unlisten: (() => void) | undefined;
     getCurrentWebview()
       .onDragDropEvent((event) => {
@@ -821,28 +634,36 @@ export default function App() {
   }, []);
 
   const runSpec = useCallback(
-    async (path: string, newProject: boolean) => {
+    async (path: string, newProject: boolean, override?: SchedulingConfiguration) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
+      const config = override ?? { budget, policy, tie };
+      cfgRequest.current += 1;
       setPreview(null);
       setImagePreview(null);
       setMermaidPreview(null);
       setHub(false);
       setWorkflow("spec");
       setBinary(null);
-      setAnalysis(null);
+      setBinaryRunOptions(null);
+      if (newProject) {
+        setAnalysis(null);
+        setSpecRunConfig(null);
+        setHistory([]);
+        setSnapshots([]);
+        setShowOutput(false);
+      }
       setCurrentPath(path);
-      setActiveStage("dag");
+      setActiveStage("results");
       setBusy(true);
       setError(null);
-      setStatus({ text: "ANALYZING", tone: "warn" });
-      setDetail({
-        title: "ANALYZING",
-        body: `${path}\n\nRunning the C++ ptpn analyzer and materializing text artifacts.`,
-      });
+      setStatus({ text: "Verifying model", tone: "warn" });
+      setDetail({ title: "Verification in progress", body: path });
       setWindowTitle(fileName(path));
-      if (newProject) setHistory([]);
       setLiveLog([]);
       setLiveElapsed(0);
       setPending([]);
+      setPendingMessage("");
       setPendingInputs({});
       setAllocation(null);
       setDescribeText("");
@@ -852,75 +673,51 @@ export default function App() {
       runStartedRef.current = Date.now();
       try {
         const payload = await analyzeModel(path, {
-          max_states: budget.maxStates,
-          timeout_secs: budget.timeoutSecs,
-          max_memory_mb: budget.maxMemoryMb,
-          policy,
-          tie,
+          max_states: config.budget.maxStates,
+          timeout_secs: config.budget.timeoutSecs,
+          max_memory_mb: config.budget.maxMemoryMb,
+          policy: config.policy,
+          tie: config.tie,
         });
         setAnalysis(payload);
-        setBusy(false);
-        runStartedRef.current = 0;
-        const result = payload.result;
+        setSpecRunConfig(config);
         setSnapshots((previous) =>
-          [...previous, snapshotFrom(payload, budget, snapshotIdRef.current++)].slice(-10),
+          [...previous, snapshotFrom(payload, config.budget, snapshotIdRef.current++)].slice(-10),
         );
-        if (result.canceled) {
-          setStatus({ text: "CANCELED", tone: "warn" });
-          setDetail({
-            title: "RUN CANCELED",
-            body: `canceled after ${result.elapsed_ms} ms`,
-          });
-          appendHistory("CANCELED", `${payload.docs.task_count}T | canceled`);
-          return;
-        }
-        const verdict = !result.ok
-          ? "ERROR"
-          : result.partial
-            ? "PARTIAL"
-            : metricsSchedulable(payload)
-              ? "SCHEDULABLE"
-              : "UNSCHEDULABLE";
-        setStatus({
-          text: verdict,
-          tone: !result.ok
-            ? "bad"
-            : result.partial
-              ? "warn"
-              : metricsSchedulable(payload)
-                ? "good"
-                : "bad",
-        });
-        const budgetLine = `budget   max-states ${budget.maxStates} | timeout ${budget.timeoutSecs || "off"} s | max-memory ${budget.maxMemoryMb || "off"} MB\npolicy   ${policyInfo.label} (${policy}) | tie ${tie}`;
-        const partialLine = result.partial
-          ? `\npartial  resource budget reached (exit 5): the state-class graph is an incomplete prefix and metrics stay bounds`
-          : "";
+        const { result } = payload;
+        const { partial, deadlocks, certified } = schedulingOutcome(payload);
+        let verdict: Status;
+        if (result.canceled) verdict = { text: "Canceled", tone: "warn" };
+        else if (!result.ok) verdict = { text: "Verification failed", tone: "bad" };
+        else if (payload.deadlock_trace?.length || (certified && deadlocks > 0)) {
+          verdict = { text: "Deadlock found", tone: "bad" };
+        } else if (partial) verdict = { text: "Exploration incomplete", tone: "warn" };
+        else verdict = { text: "Verification complete", tone: "good" };
+        setStatus(verdict);
         setDetail({
-          title: result.ok ? "MODEL READY" : "ANALYSIS FAILED",
+          title: verdict.text,
           body: result.ok
-            ? `${result.net.places.length} places | ${result.net.transitions.length} transitions\n${result.scg.nodes.length} state classes | ${result.scg.edges.length} edges\n${budgetLine}${partialLine}\n\nText is the primary workbench; PREVIEW opens a graph.`
-            : `${result.error}\n\n${budgetLine}`,
+            ? `${result.scg.nodes.length} state classes, ${result.scg.edges.length} transitions`
+            : result.error,
         });
-        appendHistory(
-          verdict,
-          `${payload.docs.task_count}T | ${result.scg.nodes.length}S${result.partial ? " | partial" : ""}`,
-        );
-        void describeModel(path, policy, tie)
-          .then((description) => setDescribeText(description))
-          .catch(() => setDescribeText(""));
+        appendHistory(verdict.text, `${payload.docs.task_count} tasks, ${result.scg.nodes.length} state classes`);
       } catch (reason) {
-        setBusy(false);
-        setStatus({ text: "ANALYSIS FAILED", tone: "bad" });
+        setStatus({ text: "Verification failed", tone: "bad" });
         setError(String(reason));
-        setDetail({ title: "ANALYSIS FAILED", body: String(reason) });
+        setDetail({ title: "Verification failed", body: String(reason) });
+      } finally {
+        runningRef.current = false;
+        runStartedRef.current = 0;
+        setBusy(false);
       }
     },
-    [appendHistory, budget, policyInfo, policy, tie],
+    [appendHistory, budget, policy, tie],
   );
 
   const exportReport = useCallback(
     async (format: "md" | "json") => {
-      if (!analysis) return;
+      if (!analysis || !specRunConfig) return;
+      const { budget, policy, tie } = specRunConfig;
       const contents =
         format === "md"
           ? buildMarkdownReport(analysis, budget, policy, tie, sweep)
@@ -942,20 +739,20 @@ export default function App() {
         setError(String(reason));
       }
     },
-    [analysis, budget, policy, tie, sweep],
+    [analysis, specRunConfig, sweep],
   );
 
   const refreshDescription = useCallback(async () => {
     if (!currentPath) return;
     setDescribeBusy(true);
     try {
-      setDescribeText(await describeModel(currentPath, policy, tie));
+      setDescribeText(await describeModel(currentPath, specRunConfig?.policy ?? policy, specRunConfig?.tie ?? tie));
     } catch (reason) {
       setError(String(reason));
     } finally {
       setDescribeBusy(false);
     }
-  }, [currentPath, policy, tie]);
+  }, [currentPath, policy, specRunConfig, tie]);
 
   const toggleComparePolicy = (id: string) => {
     setCompareSelected((previous) =>
@@ -1067,7 +864,7 @@ export default function App() {
           tie,
         });
         const result = payload.result;
-        const metrics = (result.metrics ?? {}) as Metrics;
+        const metrics = schedulingMetrics(payload);
         const deadlocks = metrics.deadlock_states?.length ?? 0;
         const wcrts = (metrics.tasks ?? [])
           .map((task) => task.wcrt)
@@ -1104,122 +901,126 @@ export default function App() {
   }, [currentPath, isBinary, budget.maxMemoryMb, tie, sweepBusy, sweepMaxStates, sweepTimeoutSecs]);
 
   const runBinary = useCallback(
-    async (path: string, newProject: boolean, overrideOptions?: BinaryOptions) => {
+    async (path: string, newProject: boolean, overrideOptions?: BinaryOptions, reviewResults = !newProject) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
+      const activeOptions = overrideOptions ?? binaryOptions;
+      cfgRequest.current += 1;
+      setCfgLoading(false);
       setPreview(null);
       setImagePreview(null);
       setMermaidPreview(null);
       setHub(false);
       setWorkflow("binary");
       setAnalysis(null);
-      setCurrentPath(null);
+      setSpecRunConfig(null);
+      setCurrentPath(path);
+      setActiveStage(reviewResults ? "analysis" : "overview");
       setBusy(true);
       setError(null);
-      setStatus({ text: "PARSING ELF", tone: "violet" });
-      setDetail({
-        title: "ELF WORKFLOW",
-        body: `${path}\n\nRunning the elf2tdg loader view and CFG extraction.`,
-      });
+      setLiveLog([]);
+      setLiveElapsed(0);
+      runStartedRef.current = Date.now();
+      setStatus({ text: newProject ? "Inspecting firmware" : "Analyzing timing", tone: "accent" });
+      setDetail({ title: "Firmware analysis in progress", body: path });
       setWindowTitle(fileName(path));
-      if (newProject) setHistory([]);
-      setFunctionCfg(null);
-      setCfgSelector(null);
-      setCfgError(null);
-      setWcetPath(null);
-      setBinary(null);
-      const activeOptions = overrideOptions ?? binaryOptions;
+      if (newProject) {
+        setBinary(null);
+        setBinaryRunOptions(null);
+        setBinaryOptions(activeOptions);
+        setHistory([]);
+        setShowOutput(false);
+      }
       try {
         const payload = await analyzeElf(path, activeOptions);
+        cfgRequest.current += 1;
+        setFunctionCfg(null);
+        setCfgSelector(null);
+        setCfgLoading(false);
+        setCfgError(null);
+        setWcetPath(null);
         setBinary(payload);
-        setCurrentPath(path);
+        setBinaryRunOptions(activeOptions);
+        setBinaryUsesStoredRun(false);
+        setStatus({ text: "Firmware ready", tone: "good" });
+        setDetail({
+          title: "Firmware ready",
+          body: `${payload.functions} functions, ${payload.blocks} basic blocks
+${payload.artifacts_dir}`,
+        });
+        appendHistory("Firmware ready", `${payload.functions} functions, ${payload.calls} calls`);
         void workspaceSaveProject(fileName(path), path, activeOptions, payload)
           .then(() => workspaceRecent(12))
           .then(setWorkspaceProjects)
-          .catch(() => undefined);
-        setCurrentPath(path);
-        setBusy(false);
-        setActiveStage("overview");
-        setStatus({ text: "ELF READY", tone: "violet" });
-        const warningBlock =
-          payload.warnings.length > 0
-            ? `\n\nwarnings\n${payload.warnings.map((warning) => `  | ${warning}`).join("\n")}`
-            : "";
-        setDetail({
-          title: "ELF WORKFLOW",
-          body:
-            `ELF      ${fileName(payload.elf_path)} (${Math.round(payload.file_size / 1024)} KB)\n` +
-            `CFG      ${payload.functions} functions | ${payload.blocks} blocks | ${payload.calls} calls\n` +
-            `PREVIEW  ${payload.cfg_svg ? "Graphviz SVG" : "interactive graph fallback"}\n` +
-            `ARTIFACTS ${payload.artifacts_dir}${warningBlock}`,
-        });
-        appendHistory(
-          "ELF",
-          `CFG ${payload.functions} fn | ${payload.calls} calls`,
-        );
+          .catch((error) => setError(`Could not save run history: ${String(error)}`));
       } catch (reason) {
-        setBusy(false);
-        setStatus({ text: "IMPORT FAILED", tone: "bad" });
+        setStatus({ text: "Firmware analysis failed", tone: "bad" });
         setError(String(reason));
-        setDetail({ title: "IMPORT FAILED", body: String(reason) });
+        setDetail({ title: "Firmware analysis failed", body: String(reason) });
+      } finally {
+        runningRef.current = false;
+        runStartedRef.current = 0;
+        setBusy(false);
       }
     },
     [appendHistory, binaryOptions],
   );
 
   const loadFunctionCfg = useCallback(
-    async (selector: string) => {
-      if (!currentPath || !selector) return;
-      setWcetPath(null);
+    async (selector: string, highlight: string[] | null = null) => {
+      if (!currentPath || !selector || !binaryRunOptions) return;
+      const request = ++cfgRequest.current;
+      setWcetPath(highlight);
+      setFunctionCfg(null);
       setCfgSelector(selector);
       setCfgLoading(true);
       setCfgError(null);
       try {
-        const cfg = await binaryFunction(currentPath, selector, binaryOptions);
+        const useArtifact = binaryUsesStoredRun || highlight !== null;
+        const artifact = useArtifact
+          ? binary?.artifacts.find((path) => path.endsWith(".cfg.json"))
+          : undefined;
+        if (useArtifact && !artifact) {
+          throw new Error("This run has no saved CFG artifact. Run timing analysis to rebuild the evidence.");
+        }
+        const cfg = await binaryFunction(currentPath, selector, binaryRunOptions, artifact);
+        if (cfgRequest.current !== request) return;
         setFunctionCfg(cfg);
         setDetail({
-          title: "FUNCTION CFG",
-          body:
-            `${cfg.name || selector}\n` +
-            `${cfg.address || "-"} | ${cfg.blocks.length} blocks | ${cfg.edges.length} edges\n` +
-            `${cfg.source?.file ? `${cfg.source.file}:${cfg.source.line ?? "?"}` : "no source mapping"}`,
+          title: "Function control flow",
+          body: `${cfg.name || selector}
+${cfg.address || "-"} | ${cfg.blocks.length} blocks
+${cfg.source?.file ?? "Source location unavailable"}`,
         });
       } catch (reason) {
-        setFunctionCfg(null);
-        setCfgError(String(reason));
-        setDetail({ title: "CFG EXPLORER", body: String(reason) });
+        if (cfgRequest.current === request) setCfgError(String(reason));
       } finally {
-        setCfgLoading(false);
+        if (cfgRequest.current === request) setCfgLoading(false);
       }
     },
-    [binaryOptions, currentPath],
+    [binary, binaryRunOptions, binaryUsesStoredRun, currentPath],
   );
 
   const functionSelector = (row: BinaryFunctionRow): string =>
-    row.name || row.demangled_name || row.address || row.id || "";
+    row.address || row.name || row.demangled_name || row.id || "";
 
   useEffect(() => {
-    if (!isBinary || activeStage !== "cfg" || !currentPath) return;
-    if (functionCfg && cfgSelector) return;
-    if (cfgLoading) return;
-    const rootName = binary?.roots
-      .map((root) => (typeof root.name === "string" ? root.name : ""))
-      .find((name) => name.length > 0);
-    const fallback = binary?.function_rows.find((row) => (row.name ?? "").length > 0);
-    const selector = rootName || (fallback ? functionSelector(fallback) : "");
+    if (!isBinary || activeStage !== "cfg" || !binary || busy || cfgSelector || cfgLoading) return;
+    const rootName = binary.roots
+      .map((root) => typeof root.name === "string" ? root.name : "")
+      .find(Boolean);
+    const row = binary.function_rows[0];
+    const selector = rootName || (row ? functionSelector(row) : "");
     if (selector) void loadFunctionCfg(selector);
-  }, [
-    activeStage,
-    binary,
-    cfgLoading,
-    cfgSelector,
-    functionCfg,
-    isBinary,
-    currentPath,
-    loadFunctionCfg,
-  ]);
+  }, [activeStage, binary, busy, cfgLoading, cfgSelector, isBinary, loadFunctionCfg]);
 
   const cancelRun = useCallback(async () => {
     setStatus({ text: "CANCELING", tone: "warn" });
-    await cancelAnalysis();
+    try {
+      await cancelAnalysis();
+    } catch (error) {
+      setError(String(error));
+    }
   }, []);
 
   const fillPending = useCallback(async () => {
@@ -1270,6 +1071,7 @@ export default function App() {
     try {
       const list = await pendingTimings(currentPath);
       setPending(list);
+      setPendingMessage(list.length === 0 ? "No pending timing intervals found." : "");
       setPendingInputs(
         Object.fromEntries(list.map((measurement) => [measurement.task, ""])),
       );
@@ -1316,6 +1118,9 @@ export default function App() {
       modelPath: currentPath,
       stage: activeStage,
       budgets: budget,
+      policy,
+      tie,
+      binaryOptions: isBinary ? binaryOptions : undefined,
       savedAt: new Date().toISOString(),
     };
     try {
@@ -1329,38 +1134,75 @@ export default function App() {
     } catch (reason) {
       setError(String(reason));
     }
-  }, [currentPath, workflow, activeStage, budget]);
+  }, [currentPath, workflow, activeStage, budget, policy, tie, isBinary, binaryOptions]);
 
   const openProject = useCallback(async () => {
-    const path = await pickProject();
-    if (!path) return;
     try {
+      const path = await pickProject();
+      if (!path) return;
       const project = JSON.parse(await readTextFile(path)) as ProjectFile;
-      if (!project.modelPath) throw new Error("project file has no modelPath");
-      setBudget(project.budgets ?? budget);
-      if (project.workflow === "binary") {
-        await runBinary(project.modelPath, true);
-      } else {
-        await runSpec(project.modelPath, true);
+      if (!project.modelPath) throw new Error("Project file has no model path.");
+      const config = {
+        budget: project.budgets ?? budget,
+        policy: project.policy ?? policy,
+        tie: project.tie ?? tie,
+      };
+      setBudget(config.budget);
+      setPolicy(config.policy);
+      setTie(config.tie);
+      const binary = project.workflow === "binary";
+      if (binary) await runBinary(project.modelPath, true, project.binaryOptions ?? {});
+      else await runSpec(project.modelPath, true, config);
+      if (workspaceSections(binary).some(({ stages }) => (stages as readonly Stage[]).includes(project.stage))) {
+        setActiveStage(project.stage);
       }
-      if (project.stage) setActiveStage(project.stage);
-      setDetail({
-        title: "PROJECT LOADED",
-        body: `${project.modelPath}\nstage ${project.stage}`,
-      });
     } catch (reason) {
       setError(String(reason));
     }
-  }, [budget, runBinary, runSpec]);
+  }, [budget, policy, tie, runBinary, runSpec]);
 
   const openSpecDialog = useCallback(async () => {
-    const path = await pickSpecification();
-    if (path) await runSpec(path, true);
-  }, [runSpec]);
+    try {
+      const path = await pickSpecification();
+      if (!path || runningRef.current) return;
+      cfgRequest.current += 1;
+      setWorkflow("spec");
+      setHub(false);
+      setAnalysis(null);
+      setBinary(null);
+      setSpecRunConfig(null);
+      setBinaryRunOptions(null);
+      setCurrentPath(path);
+      setActiveStage("source");
+      setSource(null);
+      setHistory([]);
+      setSnapshots([]);
+      setPending([]);
+      setPendingMessage("");
+      setPendingInputs({});
+      setAllocation(null);
+      setDescribeText("");
+      setSweep([]);
+      setCompareMode(false);
+      setCompareLanes([]);
+      setLiveLog([]);
+      setShowOutput(false);
+      setError(null);
+      setStatus({ text: "Model loaded", tone: "accent" });
+      setDetail({ title: "Model loaded", body: path });
+      setWindowTitle(fileName(path));
+    } catch (error) {
+      setError(String(error));
+    }
+  }, []);
 
   const openBinaryDialog = useCallback(async () => {
-    const path = await pickElf();
-    if (path) await runBinary(path, true);
+    try {
+      const path = await pickElf();
+      if (path) await runBinary(path, true, {});
+    } catch (error) {
+      setError(String(error));
+    }
   }, [runBinary]);
 
   const openWorkspaceRun = useCallback(async (id: string, runId: string) => {
@@ -1371,8 +1213,16 @@ export default function App() {
       setAnalysis(null);
       setBinary(restored.payload);
       setCurrentPath(restored.project.elf_path ?? null);
-      setBinaryOptions((restored.project.options ?? {}) as BinaryOptions);
-      setActiveStage("overview");
+      const options = restored.project.options ?? {};
+      setBinaryOptions(options);
+      setBinaryRunOptions(options);
+      setBinaryUsesStoredRun(true);
+      setSpecRunConfig(null);
+      setHistory([]);
+      setShowOutput(false);
+      cfgRequest.current += 1;
+      setCfgLoading(false);
+      setActiveStage("analysis");
       setFunctionCfg(null);
       setCfgSelector(null);
       setCfgError(null);
@@ -1430,7 +1280,7 @@ export default function App() {
             (delta === null ? "" : ` (${delta > 0 ? "+" : ""}${delta.toFixed(1)} cy)`),
         );
       }
-      setDetail({ title: "STORED RUN COMPARISON", body: lines.join("\n") });
+      setHomeComparison({ title: "Stored run comparison", body: lines.join("\n") });
     } catch (reason) {
       setError(String(reason));
     }
@@ -1444,8 +1294,16 @@ export default function App() {
       setAnalysis(null);
       setBinary(restored.payload);
       setCurrentPath(restored.project.elf_path ?? null);
-      setBinaryOptions((restored.project.options ?? {}) as BinaryOptions);
-      setActiveStage("overview");
+      const options = restored.project.options ?? {};
+      setBinaryOptions(options);
+      setBinaryRunOptions(options);
+      setBinaryUsesStoredRun(true);
+      setSpecRunConfig(null);
+      setHistory([]);
+      setShowOutput(false);
+      cfgRequest.current += 1;
+      setCfgLoading(false);
+      setActiveStage("analysis");
       setFunctionCfg(null);
       setCfgSelector(null);
       setCfgError(null);
@@ -1465,46 +1323,44 @@ export default function App() {
 
   const openPath = useCallback(
     (path: string) => {
+      if (operationBusy) return;
       if (isBinaryPath(path)) {
-        void runBinary(path, path !== binary?.elf_path);
+        const newProject = path !== binary?.elf_path;
+        void runBinary(path, newProject, newProject ? {} : undefined);
       } else {
-        void runSpec(path, path !== currentPath);
+        void runSpec(path, workflow !== "spec" || path !== currentPath);
       }
     },
-    [binary?.elf_path, currentPath, runBinary, runSpec],
+    [binary?.elf_path, currentPath, operationBusy, runBinary, runSpec, workflow],
   );
   openPathRef.current = openPath;
 
-  const openExample = useCallback(async () => {
+  const openModelExample = useCallback(async () => {
     try {
       const base = await exampleBase();
-      if (isBinary) {
-        await runBinary(
-          `${base}/elf2tdg/rust-concurrency/artifacts/rust-concurrency-analysis.elf`,
-          true,
-        );
-      } else {
-        await runSpec(`${base}/ptpn/motivating-examples/hw.json`, true);
-      }
+      await runSpec(await join(base, "ptpn", "introduction", "locked.rtsl"), true, {
+        budget: { maxStates: 20_000, timeoutSecs: 120, maxMemoryMb: 2048 },
+        policy: "fixed_prior_with_resume",
+        tie: "fifo",
+      });
     } catch (reason) {
       setError(String(reason));
     }
-  }, [isBinary, runBinary, runSpec]);
+  }, [runSpec]);
 
   const openElfExample = useCallback(async () => {
     try {
       const base = await exampleBase();
-      const profile = `${base}/elf2tdg/profiles/cortex-m4-pipeline.toml`;
+      const profile = await join(base, "elf2tdg", "profiles", "cortex-m7-wcet.toml");
       const options: BinaryOptions = {
-        cpu: "cortex-m4",
-        freq: "168MHz",
+        cpu: "cortex-m7",
         board_profile: profile,
       };
-      setBinaryOptions(options);
       await runBinary(
-        `${base}/elf2tdg/rust-concurrency/artifacts/rust-concurrency-analysis.elf`,
+        await join(base, "elf2tdg", "rust-concurrency", "artifacts", "rust-concurrency-analysis.elf"),
         true,
         options,
+        true,
       );
     } catch (reason) {
       setError(String(reason));
@@ -1515,7 +1371,7 @@ export default function App() {
     try {
       const text = activeStage === "semantics" ? describeText || doc : doc;
       await navigator.clipboard.writeText(text);
-      setStatus({ text: "COPIED", tone: "accent" });
+      setStatus({ text: "Copied to clipboard", tone: "accent" });
     } catch {
       setError("Clipboard unavailable");
     }
@@ -1535,7 +1391,8 @@ export default function App() {
           return;
         }
         if (layout.length > ELF_PREVIEW_CHAR_LIMIT) {
-          setStatus({ text: "PREVIEW SKIPPED", tone: "warn" });
+          setShowOutput(true);
+          setStatus({ text: "Preview too large", tone: "warn" });
           setDetail({
             title: "ELF PREVIEW TOO LARGE",
             body:
@@ -1585,739 +1442,290 @@ export default function App() {
     });
   };
 
-  const verdict = isBinary
-    ? { text: "ELF PARSED", tone: "violet" as Tone }
-    : analysis?.result.ok
-      ? metricsSchedulable(analysis)
-        ? { text: "SCHEDULABLE", tone: "good" as Tone }
-        : { text: "UNSCHEDULABLE", tone: "bad" as Tone }
-      : { text: "NO RESULT", tone: "muted" as Tone };
-
-  const maxWcrt = Math.max(0, ...(metrics.tasks ?? []).map((task) => task.wcrt ?? 0));
   const displayPath = binary?.elf_path ?? currentPath;
   const displayName = fileName(displayPath);
-  const workflowLabel =
-    workflow === "binary"
-      ? "BINARY | ELF"
-      : workflow === "spec"
-        ? analysis?.docs?.workflow ?? "SPEC-FIRST"
-        : "NO WORKFLOW";
+  const stage = STAGES[activeStage];
+  const lastRun = isBinary
+    ? binaryRunOptions === null ? "" : [
+        binaryRunOptions.cpu || "Auto-detected CPU",
+        binaryRunOptions.freq,
+        binaryRunOptions.board_profile ? fileName(binaryRunOptions.board_profile) : "",
+      ].filter(Boolean).join(" / ")
+    : specRunConfig === null ? "" : [
+        resultPolicy.label,
+        `${specRunConfig.tie} tie rule`,
+        `${specRunConfig.budget.maxStates.toLocaleString("en-US")} state limit`,
+      ].join(" / ");
+  const selectedProfile = profiles.find((profile) => profile.path === binaryOptions.board_profile);
+  const profileConflict = isBinary && Boolean(
+    selectedProfile?.cpu && binaryOptions.cpu && selectedProfile.cpu !== binaryOptions.cpu,
+  );
+  const canRun = Boolean(currentPath) && !operationBusy && !profileConflict;
+  const openInput = isBinary ? openBinaryDialog : openSpecDialog;
+  const openSample = isBinary ? openElfExample : openModelExample;
+  const onSelectFunction = (row: BinaryFunctionRow) => {
+    setActiveStage("cfg");
+    void loadFunctionCfg(functionSelector(row));
+  };
 
   if (workflow === "none" || hub) {
     return (
-      <div className="chooser">
-        <header className="chooser-header">
-          <div className="brand">
-            <div className="brand-mark">
-              <svg viewBox="0 0 32 32" aria-hidden="true">
-                <path d="M16 2 28 9v14l-12 7L4 23V9z" />
-                <circle cx="16" cy="9" r="2.3" />
-                <circle cx="10" cy="21" r="2.3" />
-                <circle cx="22" cy="21" r="2.3" />
-                <path d="M16 11.3 11 19M16 11.3 21 19M11.8 21h8.4" />
-              </svg>
-            </div>
-            <div>
-              <div className="brand-name">RT-PN</div>
-              <div className="brand-sub">REAL-TIME PETRI WORKBENCH</div>
-            </div>
-          </div>
-          <div className="chooser-engines">
-            <button className="btn small" onClick={() => setGuideOpen(true)}>
-              ? GUIDE
-            </button>
-            <span className="engine-label" title={cli?.path ?? undefined}>
-              <Cpu size={11} />
-              <span>
-                {cli
-                  ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""}`
-                  : "PTPN NOT FOUND | just engines"}
-              </span>
-            </span>
-            <span className="engine-label" title={elf2tdg?.path ?? undefined}>
-              <Binary size={11} />
-              <span>
-                {elf2tdg
-                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""}`
-                  : "ELF2TDG NOT FOUND | just engines"}
-              </span>
-            </span>
+      <div className="workbench-home">
+        <header className="home-bar">
+          <WorkbenchBrand />
+          <div className="wb-actions">
+            {workflow !== "none" && (
+              <button className="wb-button wb-quiet" onClick={() => setHub(false)}>
+                Resume workspace <ArrowRight size={15} />
+              </button>
+            )}
+            <button className="wb-button wb-quiet" onClick={() => void openProject()}><FolderOpen size={15} /> Open project</button>
+            <button className="wb-button wb-icon" onClick={() => setGuideOpen(true)} aria-label="Open workflow guide" title="Workflow guide"><CircleHelp size={19} /></button>
           </div>
         </header>
-        <Hub
-          onSpec={() => void openSpecDialog()}
-          onBinary={() => void openBinaryDialog()}
-          onSpecExample={() => void openExample()}
-          onBinaryExample={() => void openElfExample()}
-        />
-        {workspaceProjects.length > 0 && (
-          <section className="chooser-recent">
-            <div className="chooser-section-head">
-              <div>
-                <div className="sem-eyebrow">RECENT PROJECTS | SQLITE WORKSPACE</div>
-                <h2>Open a cached analysis</h2>
+        <WorkbenchHome
+          onOpenModel={() => void openSpecDialog()}
+          onOpenFirmware={() => void openBinaryDialog()}
+          onModelExample={() => void openModelExample()}
+          onFirmwareExample={() => void openElfExample()}
+        >
+          {workspaceProjects.length > 0 && (
+            <section className="wb-recents">
+              <h2>Recent firmware</h2>
+              <div className="wb-recent-list">
+                {workspaceProjects.map((project) => (
+                  <div className="wb-recent" key={project.id}>
+                    <button
+                      className="wb-recent-open"
+                      onClick={() => void openWorkspaceProject(project.id)}
+                      title={project.elf_path}
+                    >
+                      <FileCode2 size={17} />
+                      <span><strong>{project.name}</strong><small>{project.arch || "ELF"} / {project.run_count ?? 0} runs</small></span>
+                    </button>
+                    <details className="wb-menu">
+                      <summary className="wb-button wb-quiet" aria-label={`History for ${project.name}`}>History <ChevronDown size={14} /></summary>
+                      <div className="wb-menu-content">
+                        {project.last_runs?.map((run, index) => run.run_id && (
+                          <button key={run.run_id} onClick={() => void openWorkspaceRun(project.id, run.run_id!)}>
+                            {index === 0 ? "Latest" : "Run"} / {new Date(run.at * 1000).toLocaleString("en-US")}
+                          </button>
+                        ))}
+                        <button disabled={(project.last_runs?.length ?? 0) < 2} onClick={() => void compareProjectRuns(project)}>Compare last two runs</button>
+                        <button onClick={async () => {
+                          if (!window.confirm(`Remove cached analyses for "${project.name}"?`)) return;
+                          try {
+                            await workspaceDeleteProject(project.id);
+                            setWorkspaceProjects((previous) => previous.filter((item) => item.id !== project.id));
+                          } catch (reason) {
+                            setError(String(reason));
+                          }
+                        }}>Remove from history</button>
+                      </div>
+                    </details>
+                  </div>
+                ))}
               </div>
-              <span className="faint">{workspaceProjects.length} indexed</span>
-            </div>
-            <div className="chooser-recent-list">
-              {workspaceProjects.map((project) => (
-                <div className="project-card-wrap" key={project.id}>
-                  <button
-                    className="project-card"
-                    onClick={() => void openWorkspaceProject(project.id)}
-                    title={project.elf_path ?? ""}
-                  >
-                    <b>{project.name}</b>
-                    <small>
-                      {project.arch || "-"} | {project.functions ?? "?"} functions |{" "}
-                      {project.run_count ?? 0} runs | {project.profile || "no board profile"}
-                    </small>
-                    <span className="mono faint">
-                      {project.latest_wcet_root
-                        ? `WCET ${project.latest_wcet_root} | ${project.latest_wcet_cycles?.toFixed(0) ?? "?"} cy`
-                        : "no WCET result in the last run"}
-                      {project.last_opened
-                        ? ` | opened ${new Date(project.last_opened * 1000).toLocaleDateString()}`
-                        : ""}
-                    </span>
-                  </button>
-                  <button
-                    className="project-compare"
-                    title="compare the latest two stored runs"
-                    disabled={(project.last_runs?.length ?? 0) < 2}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void compareProjectRuns(project);
-                    }}
-                  >
-                    Delta
-                  </button>
-                  <button
-                    className="project-delete"
-                    title="remove this cached project (your ELF is kept)"
-                    onClick={async (event) => {
-                      event.stopPropagation();
-                      if (
-                        !window.confirm(
-                          `Remove "${project.name}" from the workspace?\n\nThe cached text results are deleted; your ELF file stays untouched.`,
-                        )
-                      ) {
-                        return;
-                      }
-                      try {
-                        await workspaceDeleteProject(project.id);
-                        setWorkspaceProjects((previous) =>
-                          previous.filter((item) => item.id !== project.id),
-                        );
-                      } catch (reason) {
-                        setError(String(reason));
-                      }
-                    }}
-                  >
-                    x
-                  </button>
-                  {project.last_runs && project.last_runs.length > 0 && (
-                    <div className="project-runs mono faint">
-                      {project.last_runs.slice(0, 3).map((run, index) => (
-                        <button
-                          key={`${run.at}-${index}`}
-                          className="project-run"
-                          title="open this stored run"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (run.run_id) void openWorkspaceRun(project.id, run.run_id);
-                          }}
-                        >
-                          {new Date(run.at * 1000).toLocaleTimeString()} |{" "}
-                          {run.wcet_root
-                            ? `${run.wcet_root} ${run.wcet_cycles?.toFixed(0) ?? "?"} cy`
-                            : "no WCET"}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
+            </section>
+          )}
+          <footer className="home-footer">
+            <span title={cli?.path}><i className={cli ? "wb-engine-ready" : ""} /> PTPN {cli ? engineTag(cli) : "unavailable"}</span>
+            <span title={elf2tdg?.path}><i className={elf2tdg ? "wb-engine-ready" : ""} /> elf2tdg {elf2tdg ? engineTag(elf2tdg) : "unavailable"}</span>
+          </footer>
+        </WorkbenchHome>
+        {homeComparison && (
+          <div className="guide-overlay" onClick={() => setHomeComparison(null)}>
+            <section className="guide-dialog wb-comparison" role="dialog" aria-modal="true" aria-label={homeComparison.title} onClick={(event) => event.stopPropagation()}>
+              <div className="wb-panel-heading"><h2>{homeComparison.title}</h2><button className="wb-button wb-icon" aria-label="Close comparison" onClick={() => setHomeComparison(null)}><X size={18} /></button></div>
+              <pre>{homeComparison.body}</pre>
+            </section>
+          </div>
         )}
-
-        <footer className="chooser-foot">
-          RT-PN 0.5.0 | config dialog | Two independent workspaces.
-        </footer>
         {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
+        {error && <button className="toast" role="alert" onClick={() => setError(null)}>{error}</button>}
       </div>
     );
   }
 
   return (
-    <div className={`app ${isBinary ? "mode-binary" : "mode-spec"}`}>
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">
-            <svg viewBox="0 0 32 32" aria-hidden="true">
-              <path d="M16 2 28 9v14l-12 7L4 23V9z" />
-              <circle cx="16" cy="9" r="2.3" />
-              <circle cx="10" cy="21" r="2.3" />
-              <circle cx="22" cy="21" r="2.3" />
-              <path d="M16 11.3 11 19M16 11.3 21 19M11.8 21h8.4" />
-            </svg>
-          </div>
-          <div>
-            <div className="brand-name">RT-PN</div>
-            <div className="brand-sub">REAL-TIME PETRI WORKBENCH</div>
-          </div>
+    <div className={`workbench-shell ${isBinary ? "workbench-firmware" : "workbench-model"}`}>
+      <header className="workbench-bar">
+        <button
+          className="wb-button wb-quiet wb-home-button"
+          onClick={() => setHub(true)}
+          disabled={operationBusy}
+          title="Back to workflows"
+          aria-label="Back to workflows"
+        >
+          <ArrowLeft size={15} /> <WorkbenchBrand />
+        </button>
+        <div className="wb-current-file" title={displayPath ?? undefined}>
+          <FileCode2 size={15} /> <span>{displayName}</span>
         </div>
-        <div className={`workflow-pill ${workflow}`}>{workflowLabel}</div>
-        <div className="path-chip" title={displayPath ?? undefined}>
-          <FileCode2 size={13} />
-          <span>{displayName}</span>
-        </div>
-          <div className="topbar-actions">
-          <StatusPill status={status} />
-          {isBinary && (
-            <button
-              className="btn"
-              disabled={!binary}
-              onClick={() => setConfigOpen(true)}
-              title="Edit CPU, board profile and frequency"
-            >
-              CONFIG
-            </button>
-          )}
-          <button
-            className="btn primary"
-            disabled={!currentPath || busy}
-            onClick={() => {
+        <div className="wb-actions wb-toolbar">
+          <details className="wb-menu">
+            <summary className="wb-button wb-quiet">File <ChevronDown size={13} /></summary>
+            <div className="wb-menu-content" onClick={(event) => {
+              if (event.target instanceof Element && event.target.closest("button")) {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+              }
+            }}>
+              <button disabled={operationBusy} onClick={() => void openInput()}>{isBinary ? "Open ELF" : "Open model"}</button>
+              <button disabled={operationBusy} onClick={() => void openSample()}>Open example</button>
+              <button disabled={operationBusy} onClick={() => void openProject()}>Open project</button>
+              <button disabled={!currentPath || operationBusy} onClick={() => void saveProject()}>Save project</button>
+            </div>
+          </details>
+          <button className="wb-button wb-icon" aria-label="Open workflow guide" title="Workflow guide" onClick={() => setGuideOpen(true)}><CircleHelp size={18} /></button>
+          {busy && !isBinary ? (
+            <button className="wb-button" disabled={status.text === "CANCELING"} onClick={() => void cancelRun()}><Square size={14} /> Cancel run</button>
+          ) : (
+            <button className="wb-button wb-primary" disabled={!canRun} title={profileConflict ? "Select the CPU required by the board profile" : undefined} onClick={() => {
               if (!currentPath) return;
               if (isBinary) void runBinary(currentPath, false);
               else void runSpec(currentPath, false);
-            }}
-          >
-            {busy ? <RefreshCw size={13} className="spin" /> : <Play size={13} />}
-            {busy ? "ANALYZING" : "RUN ANALYSIS"}
-          </button>
-          <button
-            className="btn"
-            onClick={() => (isBinary ? void openBinaryDialog() : void openSpecDialog())}
-          >
-            <FolderOpen size={13} /> {isBinary ? "IMPORT" : "OPEN"}
-          </button>
-          <button className="btn" onClick={() => setGuideOpen(true)}>
-            ? GUIDE
-          </button>
+            }}>
+              {busy ? <RefreshCw size={15} className="spin" /> : <Play size={15} />}
+              {busy ? "Analyzing..." : isBinary ? "Run timing analysis" : "Run verification"}
+            </button>
+          )}
         </div>
       </header>
 
-      <aside className="sidebar">
-        <div className="sidebar-scroll">
-          <Section title="WORKFLOW" />
-          <div className="workflow-name">{workflowLabel}</div>
-          <div className="workflow-hint">
-            {workflow === "binary"
-              ? "ELF -> READABLE LAYOUT -> CFG + PREVIEW"
-              : workflow === "spec"
-                ? "RTSL / TDG -> PTPN -> SCG"
-                : "Choose a workflow to begin"}
-          </div>
-          <div className="stack">
-            <button
-              className="btn wide"
-              onClick={() => {
-                setHub(true);
-                setPreview(null);
-                setImagePreview(null);
-                setWorkflow("none");
-                setAnalysis(null);
-                setBinary(null);
-                setCurrentPath(null);
-                setHistory([]);
-                setActiveStage("dag");
-                setBusy(false);
-                setError(null);
-                setStatus({ text: "NO PROJECT", tone: "muted" });
-                setDetail({
-                  title: "NO MODEL",
-                  body: "Choose a workflow to begin.",
-                });
-                getCurrentWindow()
-                  .setTitle("RT-PN  |  Real-Time Petri Workbench")
-                  .catch(() => undefined);
-              }}
-            >
-              <Plus size={13} /> NEW WORKSPACE
-            </button>
-          </div>
+      <WorkbenchNavigation binary={isBinary} activeStage={activeStage} onStageChange={setActiveStage} />
 
-          <div className="divider" />
-          <Section title="MODEL" />
-          <div className="source-name">{displayName}</div>
-          <div className="source-path" title={displayPath ?? undefined}>
-            {displayPath ?? "No model loaded"}
-          </div>
-          <div className="stack">
-            {!isBinary ? (
-              <>
-                <button className="btn wide primary" onClick={() => void openSpecDialog()}>
-                  <FolderOpen size={13} /> OPEN MODEL
-                </button>
-                <div className="action-row">
-                  <button className="btn small" onClick={() => void openExample()}>
-                    <Braces size={13} /> EXAMPLES
-                  </button>
-                  <button
-                    className="btn small"
-                    disabled={!currentPath}
-                    onClick={() => void saveProject()}
-                  >
-                    <Copy size={12} /> SAVE
-                  </button>
-                  <button className="btn small" onClick={() => void openProject()}>
-                    <FolderOpen size={12} /> OPEN
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <button className="btn wide violet" onClick={() => void openBinaryDialog()}>
-                  <Upload size={13} /> IMPORT ELF
-                </button>
-                <button className="btn wide" onClick={() => void openElfExample()}>
-                  <Braces size={13} /> ELF EXAMPLE
-                </button>
-              </>
-            )}
-          </div>
-
-          {isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="FUNCTION INDEX" />
-              <input
-                className="profile-input"
-                type="text"
-                placeholder="filter functions..."
-                value={binaryFunctionQuery}
-                onChange={(event) => setBinaryFunctionQuery(event.target.value)}
-              />
-              <div className="bin-nav bin-function-list">
-                {(binary?.function_rows ?? [])
-                  .filter((row) => {
-                    const query = binaryFunctionQuery.trim().toLowerCase();
-                    if (!query) return true;
-                    return [row.name, row.demangled_name, row.address]
-                      .some((value) => (value ?? "").toLowerCase().includes(query));
-                  })
-                  .slice(0, 80)
-                  .map((row, index) => {
-                    const selector = functionSelector(row);
-                    if (!selector) return null;
-                    return (
-                      <button
-                        key={`fn-${row.id ?? index}-${selector}`}
-                        className="bin-nav-row"
-                        title={row.address ?? ""}
-                        onClick={() => {
-                          setActiveStage("cfg");
-                          setFunctionCfg(null);
-                          setCfgSelector(null);
-                          void loadFunctionCfg(selector);
-                        }}
-                      >
-                        <span>{row.name || row.address || selector}</span>
-                        <small>{row.kind ?? "fn"} | {row.blocks}b</small>
-                      </button>
-                    );
-                  })}
-                {!binary && (
-                  <div className="faint">
-                    import an ELF to browse functions; the function index opens CFG documents.
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {false && isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="SAVED RUN CONFIGURATIONS" />
-              <div className="faint">
-                Analysis timing/board setup lives in the ANALYSIS document (ANALYSIS
-                SETUP). Saved configurations here only stage the same CPU / profile /
-                frequency values for the next run.
-              </div>
-              <select
-                className="policy-select"
-                value={binaryOptions.cpu ?? ""}
-                disabled={busy}
-                onChange={(event) =>
-                  setBinaryOptions((previous) => ({
-                    ...previous,
-                    cpu: event.target.value || undefined,
-                  }))
-                }
-              >
-                <option value="">cpu | auto-detect</option>
-                {["cortex-m4", "cortex-m7", "cortex-m33", "riscv32", "aarch64", "x86-64"].map(
-                  (cpu) => (
-                    <option key={cpu} value={cpu}>
-                      {cpu}
-                    </option>
-                  ),
-                )}
-              </select>
-              <select
-                className="policy-select"
-                value={binaryOptions.board_profile ?? ""}
-                disabled={busy}
-                onChange={(event) =>
-                  setBinaryOptions((previous) => ({
-                    ...previous,
-                    board_profile: event.target.value || undefined,
-                  }))
-                }
-              >
-                <option value="">board profile | none</option>
-                {profiles.map((profile) => (
-                  <option key={profile.path} value={profile.path}>
-                    {profile.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="profile-input"
-                type="text"
-                placeholder="frequency | e.g. 168MHz"
-                value={binaryOptions.freq ?? ""}
-                disabled={busy}
-                onChange={(event) =>
-                  setBinaryOptions((previous) => ({
-                    ...previous,
-                    freq: event.target.value || undefined,
-                  }))
-                }
-              />
-              <div className="config-save">
-                <input
-                  className="profile-input"
-                  type="text"
-                  placeholder="named run configuration"
-                  value={configName}
-                  disabled={busy}
-                  onChange={(event) => setConfigName(event.target.value)}
-                />
-                <button
-                  className="btn small accent"
-                  disabled={busy}
-                  onClick={() => {
-                    const name =
-                      configName.trim() ||
-                      [binaryOptions.cpu, binaryOptions.freq]
-                        .filter(Boolean)
-                        .join(" | ") ||
-                      "default";
-                    setBinaryConfigs((previous) => [
-                      ...previous.filter((configuration) => configuration.name !== name),
-                      {
-                        id: `${Date.now()}-${name}`,
-                        name,
-                        cpu: binaryOptions.cpu,
-                        freq: binaryOptions.freq,
-                        board_profile: binaryOptions.board_profile,
-                      },
-                    ]);
-                    setConfigName("");
-                  }}
-                >
-                  SAVE CONFIG
-                </button>
-              </div>
-              {binaryConfigs.length > 0 && (
-                <div className="config-list">
-                  {binaryConfigs.map((configuration) => (
-                    <div key={configuration.id} className="config-row">
-                      <button
-                        className="config-apply"
-                        onClick={() => {
-                          setBinaryOptions({
-                            cpu: configuration.cpu,
-                            freq: configuration.freq,
-                            board_profile: configuration.board_profile,
-                          });
-                          setDetail({
-                            title: "RUN CONFIGURATION",
-                            body:
-                              `${configuration.name}\n` +
-                              `cpu ${configuration.cpu ?? "auto"} | freq ${configuration.freq ?? "default"} | ` +
-                              `profile ${configuration.board_profile ?? "none"}\n\n` +
-                              "Press RUN ANALYSIS in the toolbar to apply it.",
-                          });
-                        }}
-                      >
-                        <b>{configuration.name}</b>
-                        <small>
-                          {[
-                            configuration.cpu,
-                            configuration.freq,
-                            (configuration.board_profile ?? "").split(/[\\/]/).pop(),
-                          ]
-                            .filter(Boolean)
-                            .join(" | ")}
-                        </small>
-                      </button>
-                      <button
-                        className="config-del"
-                        title="delete configuration"
-                        onClick={() =>
-                          setBinaryConfigs((previous) =>
-                            previous.filter((item) => item.id !== configuration.id),
-                          )
-                        }
-                      >
-                        x
-                      </button>
-                    </div>
-                  ))}
-                </div>
+      <main className="workbench-main">
+        <div className="workbench-document">
+          <header className="wb-document-header">
+            <div>
+              <h1>{stage.title}</h1>
+              <p>{stage.subtitle}</p>
+            </div>
+            <div className="wb-actions">
+              {activeStage === "cfg" && (
+                <button className="wb-button" disabled={!binary} onClick={() => setActiveStage("functions")}>Find function</button>
               )}
-              <div className="faint">
-                This configuration applies to the next run. Use <b>RUN ANALYSIS</b> in the
-                toolbar to execute; the function index on the left opens CFG documents.
-                CPU/board profile select the timing model (caches, branch predictor,
-                memory wait states, WCET).
-              </div>
-            </>
-          )}
-
-          {isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="ROOTS & CONCURRENCY" />
-              <div className="bin-nav">
-                {(binary?.roots ?? []).slice(0, 12).map((root, index) => {
-                  const name = typeof root.name === "string" ? root.name : "";
-                  if (!name) return null;
-                  return (
-                    <button
-                      key={`root-${index}`}
-                      className="bin-nav-row"
-                      onClick={() => {
-                        setActiveStage("cfg");
-                        setFunctionCfg(null);
-                        void loadFunctionCfg(name);
-                      }}
-                      title={String(root.confidence ?? "")}
-                    >
-                      <span>{name}</span>
-                      <small>{String(root.kind ?? "root")}</small>
-                    </button>
-                  );
-                })}
-                {(binary?.concurrency ?? []).slice(0, 8).map((site, index) => {
-                  const operation = (site.operation ?? {}) as Record<string, unknown>;
-                  const name = String(operation.name ?? operation.api ?? "");
-                  if (!name) return null;
-                  return (
-                    <button
-                      key={`site-${index}`}
-                      className="bin-nav-row spawn"
-                      onClick={() => {
-                        setActiveStage("cfg");
-                        setFunctionCfg(null);
-                        void loadFunctionCfg(name);
-                      }}
-                      title={String(operation.api ?? "")}
-                    >
-                      <span>{name}</span>
-                      <small>{String(operation.kind ?? "spawn")}</small>
-                    </button>
-                  );
-                })}
-                {(binary?.roots.length ?? 0) === 0 && (
-                  <div className="faint">
-                    run the ELF analysis to list execution roots and concurrency sites
+              {doc && activeStage !== "cfg" && (
+                <button className="wb-button wb-quiet" onClick={() => void copyStage()}><Copy size={14} /> Copy</button>
+              )}
+              {stage.previewable && (isBinary ? binary : analysis) && (
+                <button className="wb-button" onClick={openPreview}><Eye size={15} /> {activeStage === "cfg" ? "Program graph" : "Preview graph"}</button>
+              )}
+              {!isBinary && section?.label === "Results" && analysis && (
+                <details className="wb-menu">
+                  <summary className="wb-button">Export <ChevronDown size={13} /></summary>
+                  <div className="wb-menu-content">
+                    <button onClick={() => void exportReport("md")}>Markdown report</button>
+                    <button onClick={() => void exportReport("json")}>JSON report</button>
                   </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {!isBinary && (
-            <>
-              <div className="side-summary">
-                <div className={`side-verdict ${verdict.tone}`}>{verdict.text}</div>
-                <div className="side-stats">
-                  <span>
-                    <b>{analysis?.result.ok ? analysis.result.scg.nodes.length : "-"}</b>
-                    <small>states</small>
-                  </span>
-                  <span>
-                    <b>{analysis?.result.ok ? formatNumber(maxWcrt) : "-"}</b>
-                    <small>wcrt</small>
-                  </span>
-                  <span>
-                    <b>{analysis?.result.ok ? deadlockCount : "-"}</b>
-                    <small>deadlocks</small>
-                  </span>
-                  <span>
-                    <b>{policyInfo.id}</b>
-                    <small>policy</small>
-                  </span>
-                </div>
-              </div>
-            </>
-          )}
-
-          {!isBinary && (
-            <>
-              <div className="divider" />
-              <Section title="RUN CONTROL" />
-              <select
-                className="policy-select"
-                value={policy}
-                disabled={busy}
-                onChange={(event) => {
-                  setPolicy(event.target.value);
-                  setDescribeText("");
-                }}
-              >
-                {SCHEDULING_POLICIES.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="policy-select"
-                value={tie}
-                disabled={busy}
-                onChange={(event) => {
-                  setTie(event.target.value);
-                  setDescribeText("");
-                }}
-              >
-                <option value="fifo">tie | fifo</option>
-                <option value="arbitrary">tie | arbitrary</option>
-              </select>
-              <div className="faint">
-                {policyInfo.family} | {policyInfo.tieSensitive ? "tie-sensitive" : "tie-free"}
-              </div>
-              <div className="budget-row">
-                {(
-                  [
-                    ["STATES", "maxStates", 100, 1_000_000, 1_000],
-                    ["TIMEOUT S", "timeoutSecs", 0, 3_600, 30],
-                    ["MEM MB", "maxMemoryMb", 0, 65_536, 256],
-                  ] as const
-                ).map(([label, key, min, max, step]) => (
-                  <label key={key} className="budget-field">
-                    <span>{label}</span>
-                    <input
-                      type="number"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={budget[key]}
-                      disabled={busy}
-                      onChange={(event) =>
-                        setBudget((previous) => ({
-                          ...previous,
-                          [key]: Number(event.target.value) || 0,
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="action-row">
-                <button
-                  className="btn small accent"
-                  disabled={!currentPath || busy}
-                  onClick={() => currentPath && void runSpec(currentPath, false)}
-                >
-                  <Play size={12} /> {busy ? "RUNNING" : "RE-RUN"}
-                </button>
-                <button
-                  className="btn small"
-                  disabled={!currentPath || describeBusy}
-                  onClick={() => void refreshDescription()}
-                >
-                  <Terminal size={12} /> DESCRIBE
-                </button>
-                {busy && workflow === "spec" && (
-                  <button className="btn small bad" onClick={() => void cancelRun()}>
-                    CANCEL {Math.round(liveElapsed / 1000)}s
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-
-          <div className="divider" />
-          <Section title="ARTIFACTS" />
-          {isBinary ? (
-            <div className="artifact-list">
-              <Artifact label="SCHEMA" value={binary?.schema || "-"} />
-              <Artifact
-                label="FN"
-                value={
-                  binary
-                    ? `${binary.functions} | ${binary.blocks} BB | ${binary.calls} calls`
-                    : "-"
-                }
-              />
-              <Artifact
-                label="ROOTS"
-                value={binary ? `${binary.roots.length} | ${binary.concurrency.length} spawns` : "-"}
-              />
-              <Artifact
-                label="DIAG"
-                value={binary ? String(binary.diagnostics) : "-"}
-              />
-              <Artifact
-                label="IMG"
-                value={binary ? (binary.cfg_svg ? "Graphviz SVG" : "graph fallback") : "-"}
-              />
-              <Artifact label="ART" value={binary ? binary.artifacts_dir : "-"} />
+                </details>
+              )}
             </div>
-          ) : analysis?.result.ok ? (
-            <div className="artifact-list">
-              <Artifact
-                label="DAG"
-                value={`${analysis.docs.task_count}T | ${analysis.docs.dag_edge_count}E`}
-              />
-              <Artifact
-                label="PTPN"
-                value={`${analysis.result.net.places.length}P | ${analysis.result.net.transitions.length}T | ${analysis.result.net.arcs.length}A`}
-              />
-              <Artifact
-                label="SCG"
-                value={`${analysis.result.scg.nodes.length}S | ${analysis.result.scg.edges.length}E`}
-              />
-              <Artifact label="RUN" value={`${analysis.result.elapsed_ms} ms`} />
-            </div>
-          ) : (
-            <div className="faint">no artifacts yet</div>
+          </header>
+          {relatedStages.length > 1 && (
+            <nav className="wb-subnav" aria-label={`${section?.label} views`}>
+              {relatedStages.map((item) => (
+                <button key={item} onClick={() => setActiveStage(item)} aria-current={item === activeStage ? "page" : undefined}>
+                  {STAGES[item].label}
+                </button>
+              ))}
+            </nav>
           )}
-
-          {!isBinary && analysis?.result.ok && taskMetrics.length > 0 && (
-            <details className="fold">
-              <summary>WCRT / SLACK</summary>
-              <WcrtChart tasks={taskMetrics} />
-            </details>
+          {(optionsDirty || (lastRun && (section?.label === "Results" || section?.label === "Evidence"))) && (
+            <p className="wb-run-context">
+              {lastRun && <>Displayed run: <strong>{lastRun}</strong></>}
+              {optionsDirty && <span>Configuration changes apply to the next run.</span>}
+            </p>
           )}
-
-          {!isBinary && (
-            <details className="fold">
-              <summary>CORE ALLOCATION</summary>
-              <button
-                className="btn wide"
-                disabled={!currentPath || busy || allocateBusy}
-                onClick={() => void runAllocation()}
-              >
-                <Cpu size={13} /> {allocateBusy ? "SEARCHING..." : "ALLOCATE CORES"}
-              </button>
+          {busy && (analysis || binary) && <p className="wb-run-context">A new run is in progress. The previous results remain visible below.</p>}
+          <div className="wb-stage-content">
+            {activeStage === "configuration" ? (
+              isBinary ? (
+                <BinaryConfiguration
+                  binary={binary}
+                  options={binaryOptions}
+                  profiles={profiles}
+                  busy={operationBusy}
+                  onOptionsChange={setBinaryOptions}
+                  onReloadProfiles={() => {
+                    void binaryProfiles().then(setProfiles).catch((reason) => setError(String(reason)));
+                  }}
+                />
+              ) : (
+                <div className="wb-document">
+                  <section className="wb-panel">
+                    <h2>Scheduling policy</h2>
+                    <p className="wb-muted">Choose the scheduling and equal-priority rules used during exploration.</p>
+                    <fieldset className="wb-fields wb-fields-two" disabled={operationBusy}>
+                      <label>
+                        <span>Policy override</span>
+                        <select value={policy} onChange={(event) => setPolicy(event.target.value)}>
+                          {SCHEDULING_POLICIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Equal-priority tie rule</span>
+                        <select value={tie} onChange={(event) => setTie(event.target.value)}>
+                          <option value="fifo">First in, first out</option>
+                          <option value="arbitrary">Explore arbitrary order</option>
+                        </select>
+                      </label>
+                    </fieldset>
+                    <button className="wb-button wb-quiet" onClick={() => setActiveStage("semantics")}>View scheduling semantics <ArrowRight size={14} /></button>
+                  </section>
+                  <section className="wb-panel">
+                    <h2>Search limits</h2>
+                    <p className="wb-muted">Set a budget for state-space exploration. Enter zero to disable the time or memory limit.</p>
+                    <fieldset className="wb-fields" disabled={operationBusy}>
+                      {([
+                        ["State limit", "maxStates", 100, 1_000_000],
+                        ["Time limit (s)", "timeoutSecs", 0, 3_600],
+                        ["Memory limit (MB)", "maxMemoryMb", 0, 65_536],
+                      ] as const).map(([label, key, min, max]) => (
+                        <label key={key}>
+                          <span>{label}</span>
+                          <input type="number" min={min} max={max} value={budget[key]} onChange={(event) => {
+                            const value = Number(event.target.value);
+                            setBudget((previous) => ({ ...previous, [key]: value }));
+                          }} onBlur={() => {
+                            setBudget((previous) => {
+                              const value = previous[key];
+                              const nonzeroMinimum = key === "timeoutSecs" ? 5 : key === "maxMemoryMb" ? 64 : min;
+                              const next = min === 0 && value === 0 ? 0 : Math.max(nonzeroMinimum, Math.min(max, Math.round(value)));
+                              return next === value ? previous : { ...previous, [key]: next };
+                            });
+                          }} />
+                        </label>
+                      ))}
+                    </fieldset>
+                  </section>
+                  <details className="wb-panel wb-disclosure">
+                    <summary>Resolve pending timing</summary>
+                    <p className="wb-muted">Find RTSL tasks with pending timing intervals and fill them in a new source file.</p>
+                    <button className="wb-button" disabled={!currentPath || operationBusy} onClick={() => void checkPending()}>Check intervals</button>
+                    {pending.length === 0 && pendingMessage && <p className="wb-muted" role="status">{pendingMessage}</p>}
+                    {pending.length > 0 && (
+                      <>
+                        <fieldset className="wb-fields wb-fields-two" disabled={operationBusy}>
+                          {pending.map((entry) => (
+                            <label key={entry.task}>
+                              <span>{entry.task} / line {entry.line ?? "?"} / {entry.expected_segments ?? "?"} intervals</span>
+                              <input
+                                placeholder="min,max, min,max"
+                                value={pendingInputs[entry.task] ?? ""}
+                                onChange={(event) => setPendingInputs((previous) => ({ ...previous, [entry.task]: event.target.value }))}
+                              />
+                            </label>
+                          ))}
+                        </fieldset>
+                        <button className="wb-button" disabled={operationBusy} onClick={() => void fillPending()}>Fill and verify</button>
+                      </>
+                    )}
+                  </details>
+                  <details className="wb-panel wb-disclosure">
+                    <summary>Explore core allocations</summary>
+                    <p className="wb-muted">Search the allowed core assignments declared by the task model.</p>
+                    <button className="wb-button" disabled={!currentPath || operationBusy} onClick={() => void runAllocation()}>{allocateBusy ? "Searching..." : "Search allocations"}</button>
               {allocation ? (
                 (() => {
                   const report = allocation.report as Record<string, unknown>;
@@ -2375,364 +1783,160 @@ export default function App() {
                   searches allowed core assignments (RTSL `core any` or TDG `allowed_cores`)
                 </div>
               )}
-            </details>
-          )}
-
-          {!isBinary && (
-            <details className="fold">
-              <summary>COUNTEREXAMPLE</summary>
-              {deadlockSteps && deadlockSteps.length > 0 ? (
-                <>
-                  <pre className="assumptions">{deadlockTraceText(deadlockSteps)}</pre>
-                  <button className="btn wide bad" onClick={openDeadlockPreview}>
-                    <Eye size={13} /> TRACE PREVIEW
-                  </button>
-                  <button className="btn wide" onClick={() => setActiveStage("replay")}>
-                    <Play size={13} /> REPLAY TRACE
-                  </button>
-                </>
-              ) : (
-                <div className="faint">
-                  {analysis?.result.ok
-                    ? "no reachable deadlock in the explored state space"
-                    : "run an analysis to search for deadlocks"}
+                  </details>
                 </div>
-              )}
-            </details>
-          )}
-
-          {!isBinary && (
-            <details className="fold">
-              <summary>PENDING TIMING</summary>
-              <button
-                className="btn wide"
-                disabled={!currentPath || busy || fillBusy}
-                onClick={() => void checkPending()}
-              >
-                <RefreshCw size={13} /> CHECK PENDING
-              </button>
-              {pending.length === 0 ? (
-                <div className="faint">
-                  lists `measured by llm` tasks and fills their intervals via `ptpn fill`
-                </div>
-              ) : (
-                <div>
-                  {pending.map((measurement) => (
-                    <div key={measurement.task} style={{ marginTop: 8, fontSize: 11 }}>
-                      <div className="mono faint">
-                        {measurement.task} | line {measurement.line ?? "?"} | expected{" "}
-                        {measurement.expected_segments ?? "?"} intervals
-                      </div>
-                      <input
-                        type="text"
-                        placeholder="min,max, min,max, ..."
-                        value={pendingInputs[measurement.task] ?? ""}
-                        onChange={(event) =>
-                          setPendingInputs((previous) => ({
-                            ...previous,
-                            [measurement.task]: event.target.value,
-                          }))
-                        }
-                        style={{
-                          width: "100%",
-                          background: "#0b1422",
-                          color: "#dce8f5",
-                          border: "1px solid #1d3350",
-                          borderRadius: 3,
-                          padding: "2px 6px",
-                          fontFamily: "inherit",
-                        }}
-                      />
-                    </div>
-                  ))}
-                  <button
-                    className="btn wide accent"
-                    disabled={fillBusy}
-                    onClick={() => void fillPending()}
-                  >
-                    <Play size={13} /> FILL &amp; ANALYZE
-                  </button>
-                </div>
-              )}
-            </details>
-          )}
-
-          {!isBinary && (
-            <details className="fold">
-              <summary>RUN HISTORY</summary>
-          {history.length === 0 ? (
-            <div className="faint">no runs in this session</div>
-          ) : (
-            <div className="history-list">
-              {history.map((record, index) => (
-                <div className="history-row" key={`${record.time}-${index}`}>
-                  <span className="mono faint">{record.time}</span>
-                  <span className={`history-verdict ${record.verdict.toLowerCase()}`}>
-                    {record.verdict}
-                  </span>
-                  <span className="mono faint">{record.detail}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <button
-            className="btn wide"
-            disabled={snapshots.length < 2}
-            onClick={() => setCompareOpen(true)}
-          >
-            <RefreshCw size={13} /> COMPARE RUNS
-          </button>
-            </details>
-          )}
-
-          <div className="sidebar-bottom">
-            <div className="engine-label" title={cli?.path ?? undefined}>
-              <Cpu size={11} />
-              <span>
-                {cli
-                  ? `PTPN [${engineTag(cli)}] ${cli.version ?? ""} ${cli.path}`
-                  : "PTPN NOT FOUND | just engines"}
-              </span>
-            </div>
-            <div className="engine-label" title={elf2tdg?.path ?? undefined}>
-              <Binary size={11} />
-              <span>
-                {elf2tdg
-                  ? `ELF2TDG [${engineTag(elf2tdg)}] ${elf2tdg.version ?? ""} ${elf2tdg.path}`
-                  : "ELF2TDG NOT FOUND | just engines"}
-              </span>
-            </div>
-            <div className="brand-foot">RT-PN | NATIVE RUST WORKBENCH</div>
-          </div>
-        </div>
-      </aside>
-
-      <main className="workspace">
-        <>
-            <div className="stage-tabs">
-              {stages.map((stage) => (
-                <button
-                  key={stage}
-                  className={`stage-tab ${activeStage === stage ? "active" : ""}`}
-                  onClick={() => setActiveStage(stage)}
-                >
-                  {STAGES[stage].label}
-                </button>
-              ))}
-            </div>
-            <div className="stage-body">
-              <div className="stage-header">
-                <div>
-                  <div className="stage-title-row">
-                    <h1>{STAGES[activeStage].title}</h1>
-                    <span className="stage-summary">{summary}</span>
-                  </div>
-                  <div className="stage-subtitle">{STAGES[activeStage].subtitle}</div>
-                </div>
-                <div className="stage-actions">
-                  <span className="stage-search-hint">Ctrl/Ctrl+F search</span>
-                  <button className="btn small" onClick={() => void copyStage()}>
-                    <Copy size={12} /> COPY
-                  </button>
-                  {STAGES[activeStage].previewable && (
-                    <button className="btn small accent" onClick={openPreview}>
-                      <Eye size={12} /> PREVIEW
-                    </button>
-                  )}
-                </div>
+              )
+            ) : activeStage === "results" && analysis ? (
+              <div className="wb-document">
+                <SchedulingResults payload={analysis} onReplay={() => setActiveStage("replay")} onStateSpace={() => setActiveStage("state")} onConfigure={() => setActiveStage("configuration")} />
+                {history.length > 0 && (
+                  <details className="wb-panel wb-disclosure">
+                    <summary>Run history</summary>
+                    <ul className="wb-history">
+                      {history.map((entry, index) => (
+                        <li key={`${entry.time}-${index}`}><time>{entry.time}</time><strong>{entry.verdict}</strong><span>{entry.detail}</span></li>
+                      ))}
+                    </ul>
+                    <button className="wb-button" disabled={snapshots.length < 2} onClick={() => setCompareOpen(true)}>Compare last two runs</button>
+                  </details>
+                )}
               </div>
-              <div className="stage-rule" />
-              {activeStage === "overview" && isBinary && binary ? (
-                <BinaryOverview
+            ) : activeStage === "overview" && binary ? (
+              <BinaryOverview
+                binary={binary}
+                onApplyPreset={(cpu, freq) => {
+                  setBinaryOptions((previous) => ({ ...previous, cpu, freq }));
+                  setActiveStage("configuration");
+                }}
+                onSelectFunction={onSelectFunction}
+              />
+            ) : activeStage === "functions" && binary ? (
+              <BinaryFunctions binary={binary} onSelect={onSelectFunction} />
+            ) : activeStage === "elf" && binary ? (
+              <CodeStage
+                doc={binary.elf_view.length > ELF_TEXT_CHAR_LIMIT
+                  ? `${binary.elf_view.slice(0, ELF_TEXT_CHAR_LIMIT)}\n\nFull layout: ${binary.artifacts_dir}`
+                  : binary.elf_view}
+                stageKey="binary-elf"
+              />
+            ) : activeStage === "cfg" && binary ? (
+              <BinaryCfg
+                cfg={functionCfg}
+                loading={cfgLoading}
+                error={cfgError}
+                selector={cfgSelector ?? ""}
+                highlightPath={wcetPath}
+                onReload={() => { if (cfgSelector) void loadFunctionCfg(cfgSelector, wcetPath); }}
+              />
+            ) : activeStage === "analysis" && binary ? (
+              <div className="wb-document">
+                <BinaryAnalysisView
                   binary={binary}
-                  onApplyPreset={(cpu, freq) => {
-                    setBinaryOptions((previous) => ({ ...previous, cpu, freq }));
-                    setDetail({
-                      title: "PRESET APPLIED",
-                      body:
-                        `CPU ${cpu} | ${freq}\n\n` +
-                        "Press RUN ANALYSIS in the toolbar to rebuild the analysis with this configuration.",
-                    });
+                  options={binaryRunOptions ?? {}}
+                  onOpenConfig={() => setActiveStage("configuration")}
+                  onOpenCfg={() => setActiveStage("cfg")}
+                  onOpenPath={(selector, path) => {
+                    setActiveStage("cfg");
+                    void loadFunctionCfg(selector, path);
                   }}
                 />
-              ) : activeStage === "elf" && isBinary && binary ? (
-                <CodeStage
-                  doc={
-                    binary.elf_view.length > ELF_TEXT_CHAR_LIMIT
-                      ? `${binary.elf_view.slice(0, ELF_TEXT_CHAR_LIMIT)}\n\n` +
-                        `... layout truncated at ${(ELF_TEXT_CHAR_LIMIT / 1024).toFixed(0)} KB. ` +
-                        `Full artifact: ${binary.artifacts_dir}\\${fileName(binary.elf_path).replace(/\.[^.]+$/, "")}.elf.mmd`
-                      : binary.elf_view
-                  }
-                  stageKey="binary-elf"
-                />
-              ) : activeStage === "cfg" && isBinary && binary ? (
-                <BinaryCfg
-                  cfg={functionCfg}
-                  loading={cfgLoading}
-                  error={cfgError}
-                  selector={cfgSelector ?? ""}
-                  highlightPath={wcetPath}
-                  onReload={() => {
-                    if (cfgSelector) {
-                      setFunctionCfg(null);
-                      void loadFunctionCfg(cfgSelector);
-                    }
-                  }}
-                />
-              ) : activeStage === "analysis" && isBinary && binary ? (
-                <div className="bin-analysis-stack">
-                  <BinaryAnalysisView
-                    binary={binary}
-                    boardProfile={binaryOptions.board_profile ?? ""}
-                    options={binaryOptions}
-                    profiles={profiles}
-                    busy={busy}
-                    canRun={Boolean(currentPath)}
-                    onOptionsChange={setBinaryOptions}
-                    onReloadProfiles={() => {
-                      void binaryProfiles()
-                        .then(setProfiles)
-                        .catch((reason) => setError(String(reason)));
-                    }}
-                    onRun={() => {
-                      if (currentPath) void runBinary(currentPath, false);
-                    }}
-                    onProfileSaved={(path) =>
-                      setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
-                    }
-                    showSetup={false}
-                    onOpenConfig={() => setConfigOpen(true)}
-                    onOpenPath={(selector, path) => {
-                      setWcetPath(path);
-                      setFunctionCfg(null);
-                      setCfgSelector(null);
-                      setActiveStage("cfg");
-                      void loadFunctionCfg(selector);
-                      setDetail({
-                        title: "WCET LONGEST PATH",
-                        body:
-                          `${selector}\n${path.length} blocks highlighted in the CFG\n` +
-                          "Static CFG longest-path estimate - not a hardware proof.",
-                      });
-                    }}
-                  />
+                <details className="wb-panel wb-disclosure">
+                  <summary>Compare board profiles</summary>
                   <BinaryCompare
                     elfPath={binary.elf_path}
                     profiles={profiles}
-                    cpu={binaryOptions.cpu ?? ""}
-                    freq={binaryOptions.freq ?? ""}
-                    defaultProfile={binaryOptions.board_profile ?? ""}
+                    cpu={binaryRunOptions?.cpu ?? ""}
+                    freq={binaryRunOptions?.freq ?? ""}
+                    defaultProfile={binaryRunOptions?.board_profile ?? ""}
                   />
-                </div>
-              ) : activeStage === "semantics" && !isBinary ? (
-                <SemanticsStage
-                  policy={policyInfo}
+                </details>
+              </div>
+            ) : activeStage === "semantics" && !isBinary ? (
+              <SemanticsStage
+                policy={resultPolicy}
+                tie={specRunConfig?.tie ?? tie}
+                describeText={describeText}
+                describeBusy={describeBusy}
+                onRefreshDescription={() => void refreshDescription()}
+                sweep={sweep}
+                sweepBusy={sweepBusy}
+                sweepProgress={sweepProgress}
+                sweepBudget={{ maxStates: sweepMaxStates, timeoutSecs: sweepTimeoutSecs }}
+                canSweep={Boolean(currentPath) && (!operationBusy || sweepBusy)}
+                onRunSweep={() => void runSweep()}
+              />
+            ) : activeStage === "replay" && analysis?.result.scg.valid ? (
+              compareMode ? (
+                <ReplayCompare
+                  lanes={compareLanes}
+                  busy={compareBusy}
+                  progress={compareProgress}
+                  selected={compareSelected}
+                  onToggle={toggleComparePolicy}
+                  onRun={() => { if (!operationBusy) void runPolicyComparison(); }}
+                  onClose={() => setCompareMode(false)}
+                  maxStates={Math.min(budget.maxStates, 5_000)}
+                  timeoutSecs={Math.min(budget.timeoutSecs || 20, 20)}
                   tie={tie}
-                  describeText={describeText}
-                  describeBusy={describeBusy}
-                  onRefreshDescription={() => void refreshDescription()}
-                  sweep={sweep}
-                  sweepBusy={sweepBusy}
-                  sweepProgress={sweepProgress}
-                  sweepBudget={{ maxStates: sweepMaxStates, timeoutSecs: sweepTimeoutSecs }}
-                  canSweep={Boolean(currentPath) && !isBinary}
-                  onRunSweep={() => void runSweep()}
+                  modelLabel={displayName}
                 />
-              ) : activeStage === "replay" && !isBinary && analysis ? (
-                compareMode ? (
-                  <ReplayCompare
-                    lanes={compareLanes}
-                    busy={compareBusy}
-                    progress={compareProgress}
-                    selected={compareSelected}
-                    onToggle={toggleComparePolicy}
-                    onRun={() => void runPolicyComparison()}
-                    onClose={() => setCompareMode(false)}
-                    maxStates={Math.min(budget.maxStates, 5_000)}
-                    timeoutSecs={Math.min(budget.timeoutSecs || 20, 20)}
-                    tie={tie}
-                    modelLabel={displayName}
-                  />
-                ) : (
-                  <ScgReplay
-                    scg={analysis.result.scg}
-                    trace={analysis.deadlock_trace}
-                    modelLabel={displayName}
-                    policy={policyInfo.label}
-                    tie={tie}
-                    tasks={taskMetrics}
-                    onCompare={openPolicyCompare}
-                  />
-                )
-              ) : doc ? (
-                <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
               ) : (
-                <div className="empty-stage">
-                  <Network size={24} />
-                  <div>{busy ? "Analysis is running..." : "NO DATA IN THIS STAGE"}</div>
-                  <span>
-                    {busy
-                      ? "The elf2tdg loader is extracting the ELF and CFG."
-                      : "Open a model or import an ELF binary."}
-                  </span>
-                </div>
-              )}
-            </div>
-        </>
-      </main>
-
-      <aside className="inspector">
-        <div className="inspector-scroll">
-          {!isBinary && (
-            <>
-              <Section title="ASSUMPTIONS &amp; EVIDENCE" />
-              <pre className="assumptions">
-                {assumptions || "Run an analysis to populate the assumptions."}
-              </pre>
-            </>
-          )}
-          <div className="divider" />
-          <Section title="DETAILS" />
-          <div className="detail-title">{detail.title}</div>
-          <div className="detail-body">{detail.body}</div>
-          <div className="divider" />
-          <Section title="RUN LOG" />
-          <pre className="run-log">
-            {busy && liveLog.length > 0
-              ? liveLog.slice(-80).join("\n")
-              : analysis?.result.logs.join("\n") || binary?.warnings.join("\n") || "(no output)"}
-          </pre>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn small"
-              disabled={!analysis}
-              onClick={() => void exportReport("md")}
-            >
-              EXPORT MD
-            </button>
-            <button
-              className="btn small"
-              disabled={!analysis}
-              onClick={() => void exportReport("json")}
-            >
-              EXPORT JSON
-            </button>
+                <ScgReplay
+                  scg={analysis.result.scg}
+                  trace={analysis.deadlock_trace}
+                  modelLabel={fileName(analysis.result.path)}
+                  policy={resultPolicy.label}
+                  tie={specRunConfig?.tie ?? tie}
+                  tasks={taskMetrics}
+                  onCompare={openPolicyCompare}
+                />
+              )
+            ) : doc ? (
+              <CodeStage doc={doc} stageKey={`${workflow}-${activeStage}`} />
+            ) : (
+              <div className="wb-empty" role="status">
+                {busy ? <RefreshCw size={24} className="spin" /> : <Network size={24} />}
+                <h2>{busy
+                  ? isBinary ? "Inspecting firmware" : "Verifying model"
+                    : activeStage === "source" ? activeSource?.error ? "Could not read the model" : activeSource ? "The source file is empty" : "Loading model source"
+                    : isBinary ? "Firmware data unavailable" : "Ready to verify"}</h2>
+                <p>{busy
+                  ? isBinary ? "Recovering the ELF layout and program control flow." : "Exploring the model's reachable states."
+                  : activeStage === "source" ? activeSource?.error ?? ""
+                    : isBinary ? "Run the analysis again or open an ELF file from the File menu."
+                      : "Run verification to see the calculated results and evidence."}</p>
+                {!busy && !isBinary && activeStage !== "source" && (
+                  <button className="wb-button" onClick={() => setActiveStage("configuration")}>Review configuration <ArrowRight size={15} /></button>
+                )}
+              </div>
+            )}
           </div>
         </div>
-      </aside>
+      </main>
 
-      <footer className="statusbar">
-        <span>
-          <Activity size={11} /> {status.text}
-        </span>
-        <span className="status-right">
-          {analysis?.result.ok
-            ? `${analysis.result.scg.nodes.length} state classes | ${analysis.result.elapsed_ms} ms | ${policyInfo.id} | budget ${budget.maxStates} states / ${budget.timeoutSecs || "inf"} s${deadlockCount > 0 ? ` | ${deadlockCount} deadlock${deadlockCount === 1 ? "" : "s"}` : ""}`
-            : isBinary
-              ? "elf2tdg artifacts | analysis backend pending"
-              : "text-first workbench"}
-        </span>
+      {showOutput && (
+        <section className="wb-output" aria-label="Run output">
+          <div className="wb-panel-heading">
+            <h2>Run output</h2>
+            <button className="wb-button wb-icon" onClick={() => setShowOutput(false)} aria-label="Close output"><X size={17} /></button>
+          </div>
+          <div className="wb-output-content">
+            <div><strong>{detail.title}</strong><pre>{detail.body}</pre></div>
+            <pre>{busy
+              ? liveLog.slice(-80).join("\n") || "Waiting for output..."
+              : analysis?.result.logs.join("\n") || binary?.warnings.join("\n") || "No log output."}</pre>
+            {!isBinary && analysis?.docs.assumptions && (
+              <details><summary>Analysis assumptions</summary><pre>{analysis.docs.assumptions}</pre></details>
+            )}
+          </div>
+        </section>
+      )}
+      <footer className="workbench-footer">
+        <span className={`wb-status wb-status-${status.tone}`} role="status"><i />{status.text}</span>
+        {busy && <span className="wb-muted">{(liveElapsed / 1000).toFixed(1)} s</span>}
+        <button className="wb-button wb-quiet" onClick={() => setShowOutput((previous) => !previous)} aria-expanded={showOutput}>
+          <Terminal size={15} /> Run output
+        </button>
       </footer>
 
       {preview && (
@@ -2781,159 +1985,11 @@ export default function App() {
         />
       )}
 
-      {configOpen && isBinary && binary && (
-        <AnalysisConfigDialog
-          binary={binary}
-          options={binaryOptions}
-          profiles={profiles}
-          busy={busy}
-          canRun={Boolean(currentPath)}
-          onOptionsChange={setBinaryOptions}
-          onReloadProfiles={() => {
-            void binaryProfiles()
-              .then(setProfiles)
-              .catch((reason) => setError(String(reason)));
-          }}
-          onRun={() => {
-            if (currentPath) void runBinary(currentPath, false);
-          }}
-          onProfileSaved={(path) =>
-            setBinaryOptions((previous) => ({ ...previous, board_profile: path }))
-          }
-          onClose={() => setConfigOpen(false)}
-        />
-      )}
-
       {guideOpen && <WorkflowGuide onClose={() => setGuideOpen(false)} />}
 
       {error && (
-        <div className="toast" onClick={() => setError(null)}>
-          {error}
-        </div>
+        <button className="toast" role="alert" onClick={() => setError(null)}>{error}</button>
       )}
     </div>
   );
 }
-
-function metricsSchedulable(payload: AnalysisPayload): boolean {
-  return Boolean(payload.result.metrics?.schedulable);
-}
-
-function StatusPill({ status }: { status: Status }) {
-  return <div className={`status-pill ${status.tone}`}>{status.text}</div>;
-}
-
-function Section({ title }: { title: string }) {
-  return <div className="section-title">{title}</div>;
-}
-
-function Artifact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="artifact-row">
-      <span className="artifact-label">{label}</span>
-      <span className="artifact-value">{value}</span>
-    </div>
-  );
-}
-
-function Stat({ label, value, tone }: { label: string; value: string; tone: Tone }) {
-  return (
-    <div className={`stat ${tone}`}>
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-    </div>
-  );
-}
-
-function Hub({
-  onSpec,
-  onBinary,
-  onSpecExample,
-  onBinaryExample,
-}: {
-  onSpec: () => void;
-  onBinary: () => void;
-  onSpecExample: () => void;
-  onBinaryExample: () => void;
-}) {
-  return (
-    <div className="hub">
-      <div className="hub-head">
-        <div className="hub-eyebrow">RT-PN WORKBENCH</div>
-        <h1>Choose an analysis mode</h1>
-        <p>
-          The two modes share one workbench but never mix their stages. Pick a
-          mode to enter its dedicated workspace; switch at any time from the
-          sidebar.
-        </p>
-      </div>
-      <div className="hub-cards">
-        <section className="hub-card spec">
-          <div className="hub-kicker">01 | RTSL / TDG to PTPN to SCG</div>
-          <h2 className="accent">Scheduling analysis</h2>
-          <p>
-            Model-first, timed and prioritized. Lower a specification to a
-            priority timed Petri net and explore its state-class graph.
-          </p>
-          <ul className="hub-list">
-            <li>11 scheduling policies with formal Mermaid semantics</li>
-            <li>WCRT, deadline slack, deadlock counterexamples, core allocation</li>
-            <li>Cross-policy sweep, state-class replay and report export</li>
-          </ul>
-          <div className="hub-spacer" />
-          <div className="hub-actions">
-            <button className="btn primary wide" onClick={onSpec}>
-              <FolderOpen size={13} /> OPEN MODEL
-            </button>
-            <button className="btn small" onClick={onSpecExample}>
-              <Braces size={13} /> SAMPLE
-            </button>
-          </div>
-        </section>
-        <section className="hub-card binary">
-          <div className="hub-kicker">02 | ELF to CFG</div>
-          <h2 className="violet">Binary analysis</h2>
-          <p>
-            Code-first static inspection: load an ELF and read its layout and
-            control-flow graph. Scheduling analysis is intentionally separate.
-          </p>
-          <ul className="hub-list">
-            <li>Readable ELF layout extracted by elf2tdg</li>
-            <li>Readable CFG plus optional Graphviz preview image</li>
-            <li>elf2tdg is still evolving; TDG output is being replaced by CFG-first views</li>
-          </ul>
-          <div className="hub-spacer" />
-          <div className="hub-actions">
-            <button className="btn violet wide" onClick={onBinary}>
-              <Binary size={13} /> IMPORT ELF
-            </button>
-            <button className="btn small" onClick={onBinaryExample}>
-              <Braces size={13} /> SAMPLE
-            </button>
-          </div>
-        </section>
-      </div>
-      <div className="hub-foot">
-        <span>
-          Both engines are bundled locally; examples live under{" "}
-          <span className="mono">examples/</span> in the repository and portable package.
-        </span>
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

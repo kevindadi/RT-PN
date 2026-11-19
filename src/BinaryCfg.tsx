@@ -77,6 +77,7 @@ type CfgNodeData = {
   entry: boolean;
   selected: boolean;
   onPath: boolean;
+  onSelect?: () => void;
 };
 
 type CfgNode = Node<CfgNodeData, "cfgBlock">;
@@ -115,12 +116,22 @@ function CfgBlockCard({ data }: NodeProps<CfgNode>) {
         <span>{instructions} insn</span>
         {(block.calls?.length ?? 0) > 0 && <span>{block.calls!.length} call</span>}
       </div>
+      <button
+        type="button"
+        className="cfg-node-pick nodrag nopan"
+        aria-label={`Inspect block ${block.address ?? block.id}`}
+        aria-pressed={data.selected}
+        onClick={data.onSelect}
+      />
       <Handle type="source" position={Position.Right} className="flow-handle" />
     </div>
   );
 }
 
 const nodeTypes = { cfgBlock: CfgBlockCard };
+const BLOCK_WIDTH = 196;
+const BLOCK_HEIGHT = 88;
+const HANDLE_SIZE = 6;
 
 function layoutCfg(
   blocks: BinaryCfgBlock[],
@@ -175,6 +186,13 @@ function layoutCfg(
       id: block.id,
       type: "cfgBlock",
       position: { x: level * 300, y: row * 128 },
+      width: BLOCK_WIDTH,
+      height: BLOCK_HEIGHT,
+      ariaLabel: `Basic block ${block.address ?? block.id}`,
+      handles: [
+        { type: "target", position: Position.Left, x: 0, y: (BLOCK_HEIGHT - HANDLE_SIZE) / 2, width: HANDLE_SIZE, height: HANDLE_SIZE },
+        { type: "source", position: Position.Right, x: BLOCK_WIDTH - HANDLE_SIZE, y: (BLOCK_HEIGHT - HANDLE_SIZE) / 2, width: HANDLE_SIZE, height: HANDLE_SIZE },
+      ],
       data: { block, entry: block.id === start, selected: false, onPath: false },
     };
   });
@@ -207,41 +225,45 @@ function BlockInstructions({ block }: { block: BinaryCfgBlock }) {
           {block.size ?? "?"} bytes
         </span>
       </div>
-      <table className="bin-table cfg-inst-table">
-        <thead>
-          <tr>
-            <th align="left">address</th>
-            <th align="left">instruction</th>
-            <th align="left">source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(block.instructions ?? []).map((instruction, index) => (
-            <tr
-              key={`${instruction.address}-${index}`}
-              className={
-                instruction.is_call
-                  ? "insn-call"
-                  : instruction.is_conditional
-                    ? "insn-branch"
-                    : instruction.is_return
-                      ? "insn-return"
-                      : ""
-              }
-            >
-              <td className="mono">{instruction.address ?? "-"}</td>
-              <td className="mono cfg-insn-text">
-                {instruction.text ?? `${instruction.mnemonic ?? ""} ${instruction.operands ?? ""}`}
-              </td>
-              <td className="mono faint">
-                {instruction.source?.file
-                  ? `${instruction.source.file}:${instruction.source.line ?? "?"}`
-                  : "-"}
-              </td>
+      {Boolean(block.instructions?.length) ? (
+        <table className="bin-table cfg-inst-table">
+          <thead>
+            <tr>
+              <th align="left">address</th>
+              <th align="left">instruction</th>
+              <th align="left">source</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {(block.instructions ?? []).map((instruction, index) => (
+              <tr
+                key={`${instruction.address}-${index}`}
+                className={
+                  instruction.is_call
+                    ? "insn-call"
+                    : instruction.is_conditional
+                      ? "insn-branch"
+                      : instruction.is_return
+                        ? "insn-return"
+                        : ""
+                }
+              >
+                <td className="mono">{instruction.address ?? "-"}</td>
+                <td className="mono cfg-insn-text">
+                  {instruction.text ?? `${instruction.mnemonic ?? ""} ${instruction.operands ?? ""}`}
+                </td>
+                <td className="mono faint">
+                  {instruction.source?.file
+                    ? `${instruction.source.file}:${instruction.source.line ?? "?"}`
+                    : "-"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="wb-muted">No instruction details are available for this block in the saved CFG.</p>
+      )}
       {(block.calls?.length ?? 0) > 0 && (
         <div className="cfg-block-calls">
           <span className="sem-eyebrow">CALLS</span>
@@ -297,28 +319,48 @@ export function BinaryCfg({
           ...node.data,
           selected: node.id === selectedId,
           onPath: pathSet.has(node.id),
+          onSelect: () => setSelectedId(node.id),
         },
       })),
     [layout.nodes, pathSet, selectedId],
   );
+  const edges = useMemo(() => {
+    if (!highlightPath?.length) return layout.edges;
+    const steps = new Map<string, Set<string>>();
+    for (let index = 1; index < highlightPath.length; index += 1) {
+      const source = highlightPath[index - 1];
+      const targets = steps.get(source) ?? new Set<string>();
+      targets.add(highlightPath[index]);
+      steps.set(source, targets);
+    }
+    return layout.edges.map((edge) => steps.get(edge.source)?.has(edge.target)
+      ? {
+          ...edge,
+          animated: false,
+          style: { ...edge.style, stroke: "#f3ca85", strokeWidth: 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "#f3ca85" },
+        }
+      : edge);
+  }, [highlightPath, layout.edges]);
 
   const selectedBlock = cfg?.blocks.find((block) => block.id === selectedId) ?? null;
+  const activeView = view === "mmd" && !cfg?.cfg_mermaid ? "graph" : view;
+  const highlightedCount = nodes.filter((node) => node.data.onPath).length;
+  const instructionCount = cfg?.blocks.reduce((sum, block) => sum + (block.instructions?.length ?? 0), 0) ?? 0;
 
   if (loading) {
     return (
       <div className="bin-cfg bin-cfg-empty">
-        <div className="sem-eyebrow">CFG EXPLORER</div>
-        <p>loading function CFG for {selector || "default root"}...</p>
+        <p role="status">Loading control flow for {selector || "the entry point"}...</p>
       </div>
     );
   }
   if (error) {
     return (
       <div className="bin-cfg bin-cfg-empty">
-        <div className="sem-eyebrow">CFG EXPLORER</div>
-        <p className="bin-cfg-error">{error}</p>
-        <button className="btn small" onClick={onReload}>
-          RETRY
+        <p className="bin-cfg-error" role="alert">{error}</p>
+        <button className="wb-button" onClick={onReload}>
+          Try again
         </button>
       </div>
     );
@@ -326,8 +368,7 @@ export function BinaryCfg({
   if (!cfg) {
     return (
       <div className="bin-cfg bin-cfg-empty">
-        <div className="sem-eyebrow">CFG EXPLORER</div>
-        <p>Select a function in FUNCTIONS or a root in the sidebar to load its CFG.</p>
+        <p>Use Find function to select a function from the recovered index.</p>
       </div>
     );
   }
@@ -339,22 +380,22 @@ export function BinaryCfg({
           <h3>{cfg.name || cfg.selector}</h3>
           <div className="mono faint">
             {cfg.address || "-"} | {cfg.blocks.length} blocks | {cfg.edges.length} edges |{" "}
-            {cfg.blocks.reduce((sum, block) => sum + (block.instructions?.length ?? 0), 0)}{" "}
-            instructions
+            {instructionCount > 0 ? `${instructionCount} instructions` : "Instruction details unavailable"}
           </div>
         </div>
         <div className="cfg-toolbar-actions">
           <div className="cfg-tabs">
             {(
               [
-                ["graph", "GRAPH"],
-                ["text", "TEXT"],
-                ["mmd", "MMD"],
+                ["graph", "Graph"],
+                ["text", "Text"],
+                ["mmd", "Mermaid"],
               ] as const
-            ).map(([value, label]) => (
+            ).filter(([value]) => value !== "mmd" || cfg.cfg_mermaid).map(([value, label]) => (
               <button
                 key={value}
-                className={`btn small ${view === value ? "accent" : ""}`}
+                className={`btn small ${activeView === value ? "accent" : ""}`}
+                aria-pressed={activeView === value}
                 onClick={() => setView(value)}
               >
                 {label}
@@ -362,7 +403,7 @@ export function BinaryCfg({
             ))}
           </div>
           <button className="btn small" onClick={onReload}>
-            RELOAD SLICE
+            Reload function
           </button>
           <span className="faint mono">
             {cfg.json_path.split(/[\\/]/).pop() ?? "cfg.json"}
@@ -370,54 +411,49 @@ export function BinaryCfg({
         </div>
       </div>
 
-      {view === "graph" ? (
-        <>
+      {activeView === "graph" ? (
+        <div className="cfg-evidence-grid">
           <div className="cfg-graph">
             {pathSet.size > 0 && (
               <div className="cfg-path-badge">
-                WCET LONGEST PATH | {pathSet.size} blocks highlighted
+                Longest path / {highlightedCount} of {pathSet.size} blocks shown
               </div>
             )}
             <ReactFlow
               nodes={nodes}
-              edges={layout.edges}
+              edges={edges}
               nodeTypes={nodeTypes}
               fitView
+              fitViewOptions={{ padding: 0.18 }}
               minZoom={0.2}
               maxZoom={1.6}
-              onNodeClick={(_, node) => setSelectedId(node.id)}
+              nodesDraggable={false}
+              nodesConnectable={false}
               proOptions={{ hideAttribution: true }}
             >
               <Background gap={22} size={1} color="#14283f" />
               <Controls showInteractive={false} />
             </ReactFlow>
           </div>
-
           {selectedBlock && <BlockInstructions block={selectedBlock} />}
-        </>
-      ) : view === "text" ? (
+        </div>
+      ) : activeView === "text" ? (
         <pre className="cfg-text">{cfgText(cfg)}</pre>
       ) : (
         <div className="cfg-mermaid">
-          {cfg.cfg_mermaid ? (
-            <Mermaid chart={cfg.cfg_mermaid} />
-          ) : (
-            <div className="faint">
-              No Mermaid CFG was produced for this function. Use TEXT or GRAPH.
-            </div>
-          )}
+          <Mermaid chart={cfg.cfg_mermaid} />
         </div>
       )}
 
       {cfg.caveats.length > 0 && (
-        <div className="bin-caveats cfg-caveats">
-          <div className="sem-eyebrow">TIMING CAVEATS</div>
+        <details className="wb-panel wb-disclosure cfg-caveats">
+          <summary>Timing assumptions</summary>
           <ul>
             {cfg.caveats.map((caveat) => (
               <li key={caveat}>{caveat}</li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
     </div>
   );

@@ -7,7 +7,7 @@ import type { StateGraph, TraceStep } from "./types";
 
 export interface ReplayTask {
   name?: string;
-  wcrt?: number;
+  wcrt?: number | null;
   deadline?: number;
   deadline_missed?: boolean;
 }

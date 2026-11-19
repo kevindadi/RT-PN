@@ -121,6 +121,9 @@ export interface ProjectFile {
   modelPath: string;
   stage: Stage;
   budgets: { maxStates: number; timeoutSecs: number; maxMemoryMb: number };
+  policy?: string;
+  tie?: string;
+  binaryOptions?: BinaryOptions;
   savedAt: string;
 }
 
@@ -312,6 +315,9 @@ export interface RunRecord {
 export type Workflow = "none" | "spec" | "binary";
 
 export type Stage =
+  | "source"
+  | "configuration"
+  | "results"
   | "dag"
   | "ptpn"
   | "semantics"
